@@ -1,0 +1,85 @@
+# =============================================================================
+# EXISTING DEPENDENCIES
+# =============================================================================
+langgraph
+IPython
+faster-whisper
+pyannote.audio>=3.3.0
+torch>=2.2.2
+torchaudio>=2.2.2
+transformers
+accelerate
+bitsandbytes
+PyPDF2
+reportlab
+fastapi
+uvicorn
+pydantic>=2.0
+numpy
+groq
+soundfile
+spaces
+datasets
+xxhash
+
+# =============================================================================
+# NEW MVP DEPENDENCIES
+# =============================================================================
+
+# Database & ORM
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+psycopg2-binary>=2.9.0  # PostgreSQL adapter
+asyncpg>=0.29.0  # Async PostgreSQL
+
+# Cache & Session Management (Post-MVP)
+redis>=5.0.0
+# aioredis  # Now part of redis package
+
+# Storage (AWS S3 for production)
+boto3>=1.29.0  # AWS SDK
+# google-cloud-storage  # GCP (if needed)
+# azure-storage-blob  # Azure (if needed)
+
+# Authentication & Security
+python-jose[cryptography]>=3.3.0  # JWT tokens
+passlib[bcrypt]>=1.7.4  # Password hashing
+python-multipart>=0.0.6  # Form data parsing
+cryptography>=41.0.0  # Encryption
+
+# Configuration
+pydantic-settings>=2.0.0  # Settings management
+python-dotenv>=1.0.0  # .env file support
+
+# Templates & PDF Generation
+jinja2>=3.1.2  # HTML templating
+weasyprint>=60.0  # HTML to PDF conversion
+# Alternative: pdfkit, reportlab (already included)
+
+# File operations
+aiofiles>=23.2.0  # Async file I/O
+
+# HTTP Client (for API calls)
+httpx>=0.25.0  # Async HTTP client
+
+# Monitoring & Observability (Post-MVP)
+# prometheus-client>=0.19.0
+# opentelemetry-api>=1.21.0
+# opentelemetry-sdk>=1.21.0
+
+# Utilities
+tenacity>=8.2.0  # Retry logic with exponential backoff
+structlog>=23.2.0  # Structured logging
+python-dateutil>=2.8.0  # Date utilities
+
+# Testing (Development)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+httpx>=0.25.0  # For testing FastAPI
+faker>=20.0.0  # Generate test data
+
+# Code quality (Development)
+black>=23.0.0  # Code formatter
+flake8>=6.0.0  # Linter
+mypy>=1.7.0  # Type checker
