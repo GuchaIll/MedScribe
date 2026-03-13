@@ -1,0 +1,159 @@
+# =============================================================================
+# MedScribe .gitignore
+# =============================================================================
+
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+develop-eggs/
+.eggs/
+eggs/
+sdist/
+wheels/
+share/python-wheels/
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+MANIFEST
+.installed.cfg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# PEP 582 (used by e.g. pdm)
+__pypackages__/
+
+# Testing & Coverage
+.pytest_cache/
+htmlcov/
+*.cover
+*.coverage
+coverage.xml
+.coverage
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+.pytype/
+.pyre/
+
+# Cython / C extensions
+cython_debug/
+
+# Build tools
+.pybuilder/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pipenv (project uses requirements.txt)
+Pipfile.lock
+
+# ── Environment & Secrets ───────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+
+# ── React / Node.js (client) ───────────────────────────────────────────────
+node_modules/
+/.pnp
+.pnp.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.yarn/
+.eslintcache
+*.tsbuildinfo
+
+# React build output
+client/medscribe/build/
+client/medscribe/dist/
+
+# Build caches
+.cache/
+.parcel-cache
+.next/
+out/
+.turbo
+
+# ── IDE / Editor ────────────────────────────────────────────────────────────
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Docker ──────────────────────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── Logs ────────────────────────────────────────────────────────────────────
+*.log
+logs/
+server/logs/
+server/app/logs/*.log
+storage/logs/
+
+# ── Storage / Data (local development) ──────────────────────────────────────
+storage/audio/
+storage/huggingface_cache/
+storage/outputs/
+storage/transcripts/
+server/storage/
+server/session/
+
+# ── Model files (too large for git) ─────────────────────────────────────────
+*.safetensors
+*.bin
+*.onnx
+*.pt
+*.pth
+*.ckpt
+model.safetensors
+pytorch_model.bin
+
+# ── Temporary / Generated ──────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+*.pid
+*.seed
+smoke_test_output.log
+server/smoke_test_output.log
+server/verify_pgvector.py
+
+# ── OS Files ────────────────────────────────────────────────────────────────
+.DS_Store
+Desktop.ini
+Thumbs.db
+ehthumbs.db
