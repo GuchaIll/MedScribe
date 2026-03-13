@@ -1,0 +1,52 @@
+========================================================================
+  OCR Extraction Report
+  File: img-sample-index-report-1.jpg
+  Processed: 2026-03-11 19:14:51
+========================================================================
+
+── Document Classification ──
+  Type       : unknown
+  Confidence : 0.10
+  Reasoning  : No keyword patterns matched
+
+── Metrics ──
+  Pages            : 1
+  Overall confidence: 83.73
+  OCR engines      : paddleocr
+  Fields extracted : 6
+  Conflicts found  : 2
+
+── Extracted Fields ──
+
+  [DEMOGRAPHIC]
+    patient_name: Sample ndex Report Case (conf: 50.24)
+    date_of_birth: 01/01/1947 (conf: 50.24)
+    sex: Male (conf: 50.24)
+
+  [MEDICATION]
+    physician: Physician (conf: 41.87)
+    alan: Alan (conf: 41.87)
+    neuman: Neuman (conf: 41.87)
+
+── Conflicts ──
+  [HIGH] demographic_mismatch
+    Field   : patient_name
+    Value   : Sample ndex Report Case
+    Existing: Test Patient
+    Message : Name mismatch: extracted 'Sample ndex Report Case' vs existing 'Test Patient'
+    Action  : Verify patient identity. Document may belong to a different patient.
+
+  [HIGH] demographic_mismatch
+    Field   : date_of_birth
+    Value   : 01/01/1947
+    Existing: 01/01/1970
+    Message : DOB mismatch: extracted '01/01/1947' vs existing '01/01/1970'
+    Action  : Verify patient identity.
+
+
+── Full Extracted Text (first 3000 chars) ──
+IndexReportSample Claimant Name: Sample ndex Report Case Id:_Index Report DOB: 01/01/1947 SSN:
+Gender: Male Date of Injuryrdisability:
+File Details ON'S Date File Name Page Count 07/08/2022 Index Sample_Redacted.pdf 508 Index Date Facility/Provider Title Page 03/07/2017 Biling summary Monroe HMA Physician Management LLC 6-11 03/07/2017 Clearview Women's Healthcare Labs 12, 289 03/0712017 Labs Monroe HIMA Physician Management LLC 91 03/07/2017 Office Visit Monroe HMA Physician Management LLC - Kendra Gamble-Webb, MD 13-15 04/04/2017 Office Visit Monroe HMA Physician Management LLC - Kendra Gamble-Webb, MD 16-20 04/19/2017 Gynconsutation Atlanta Perinatal Associates - Alan Neuman, MD 29-31 Biling summary 04/19/2017 Allanta Perinatal Associates 21-26 04/19/2017 Atlanta Perinatal Associates - Alan Neuman, MD Obstetric US 28-29 History Form 04/19/2017 Alanta Perinatal Associates 05/31/2017 Atlanta Perinatal Associates - Audrey Cooper Obstetric US 32-38 06/0G/2017 Labs Labcorp 39-42 06/28/2017 Obstetric US Allanta Perinatal Associates - Chukwuma 1Onyeijie, MD 43-49 07/26/2017 Atianta Perinatal Associates - Chukwuma 1Onyeije, MD Obstetric US 50-56 0B/04/2017 Labs Allanta Perinatal Associates 57 08/16/2017 Atlanta Perinatal Associates - Chukwuma 1 Onyeije, MD Obstetric US 58-63
+
+========================================================================

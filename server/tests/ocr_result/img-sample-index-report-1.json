@@ -1,0 +1,99 @@
+{
+  "document_id": "doc_9e32cece7bd0",
+  "original_filename": "img-sample-index-report-1.jpg",
+  "page_count": 1,
+  "overall_confidence": 83.73,
+  "ocr_engines_used": [
+    "paddleocr"
+  ],
+  "classification": {
+    "doc_type": "unknown",
+    "confidence": 0.1
+  },
+  "extracted_fields": [
+    {
+      "field_id": "fld_9d866cd18c75",
+      "field_name": "patient_name",
+      "value": "Sample ndex Report Case",
+      "category": "demographic",
+      "confidence": 50.24,
+      "source_span": "Name: Sample ndex Report Case",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_2c86dfa748eb",
+      "field_name": "date_of_birth",
+      "value": "01/01/1947",
+      "category": "demographic",
+      "confidence": 50.24,
+      "source_span": "DOB: 01/01/1947",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_1c52c36abaea",
+      "field_name": "sex",
+      "value": "Male",
+      "category": "demographic",
+      "confidence": 50.24,
+      "source_span": "Gender: Male",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_dcf7f1640da8",
+      "field_name": "physician",
+      "value": "Physician",
+      "category": "medication",
+      "confidence": 41.87,
+      "source_span": "Physician",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_16eede7a80d4",
+      "field_name": "alan",
+      "value": "Alan",
+      "category": "medication",
+      "confidence": 41.87,
+      "source_span": "Alan",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_9cb24394fcfe",
+      "field_name": "neuman",
+      "value": "Neuman",
+      "category": "medication",
+      "confidence": 41.87,
+      "source_span": "Neuman",
+      "extraction_method": "regex",
+      "metadata": {}
+    }
+  ],
+  "conflicts": [
+    {
+      "conflict_id": "cfl_49b9641791e2",
+      "field_name": "patient_name",
+      "extracted_value": "Sample ndex Report Case",
+      "existing_value": "Test Patient",
+      "conflict_type": "demographic_mismatch",
+      "severity": "high",
+      "message": "Name mismatch: extracted 'Sample ndex Report Case' vs existing 'Test Patient'",
+      "recommendation": "Verify patient identity. Document may belong to a different patient."
+    },
+    {
+      "conflict_id": "cfl_da13db7baa48",
+      "field_name": "date_of_birth",
+      "extracted_value": "01/01/1947",
+      "existing_value": "01/01/1970",
+      "conflict_type": "demographic_mismatch",
+      "severity": "high",
+      "message": "DOB mismatch: extracted '01/01/1947' vs existing '01/01/1970'",
+      "recommendation": "Verify patient identity."
+    }
+  ],
+  "processing_errors": [],
+  "full_text_length": 1290
+}

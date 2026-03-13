@@ -1,0 +1,39 @@
+========================================================================
+  OCR Extraction Report
+  File: Doctor's Handwriting.jpg
+  Processed: 2026-03-11 19:14:36
+========================================================================
+
+── Document Classification ──
+  Type       : medical_history
+  Confidence : 0.67
+  Sections   : PMH, MEDS, NAD
+  Reasoning  : Keyword match: scored 0.67 for medical_history
+
+── Metrics ──
+  Pages            : 1
+  Overall confidence: 78.75
+  OCR engines      : paddleocr
+  Fields extracted : 0
+  Conflicts found  : 0
+
+── Extracted Fields ──
+  (no fields extracted)
+
+── Conflicts ──
+  (no conflicts)
+
+── Full Extracted Text (first 3000 chars) ──
+No.1 Nar.1.20129:32AM p. 2 Office Vasits M.D.
+Aga Charts Tomp:
+Reomd.
+8s 128 Am z.
+PMH: ao change ffom prorious Counsoling/Coordinating FAMILY HISTORY; bo change from previous Oflce Visit The majority of this.
+visit ivolved counseling/coordinating min,office SOCIAL HISTORY: Bo chaeg+ trom prevlous care regarding this patient's:
+MEDS: Seo flow shot Diagnosis ALLERGIESIADVERSEDRUG REACTIONS: See fiow sheet Prognosis TreatmentAlternatives Risks/Benefits Other:
+pulmonary embolism:
+of this petient's Assessment and Plen.
+NAD
+2012 9:04AM(GMT-04:00)=
+
+========================================================================

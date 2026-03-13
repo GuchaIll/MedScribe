@@ -1,0 +1,17 @@
+{
+  "document_id": "doc_382a88b5e1a1",
+  "original_filename": "Doctor's Handwriting.jpg",
+  "page_count": 1,
+  "overall_confidence": 78.75,
+  "ocr_engines_used": [
+    "paddleocr"
+  ],
+  "classification": {
+    "doc_type": "medical_history",
+    "confidence": 0.67
+  },
+  "extracted_fields": [],
+  "conflicts": [],
+  "processing_errors": [],
+  "full_text_length": 548
+}
