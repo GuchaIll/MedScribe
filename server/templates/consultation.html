@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consultation Note - {{ record.patient.name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            line-height: 1.6;
+            color: #333;
+        }
+        .header {
+            border-bottom: 3px solid #2c3e50;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+            margin: 0 0 5px 0;
+            font-size: 24px;
+        }
+        h2 {
+            color: #34495e;
+            font-size: 16px;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #ecf0f1;
+        }
+        .patient-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-left: 4px solid #9b59b6;
+            margin-bottom: 20px;
+        }
+        .info-row {
+            display: flex;
+            margin: 5px 0;
+        }
+        .info-label {
+            font-weight: bold;
+            width: 180px;
+        }
+        .consultation-box {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        .section-content {
+            margin-left: 15px;
+            white-space: pre-wrap;
+        }
+        .list-item {
+            margin: 5px 0 5px 20px;
+        }
+        .recommendation-box {
+            background: #fff9c4;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 2px solid #ecf0f1;
+            font-size: 12px;
+            color: #666;
+        }
+        @media print {
+            body { margin: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>CONSULTATION NOTE</h1>
+        <div style="font-size: 14px; color: #666;">
+            Date: {{ record.visit.date|format_date }} | Time: {{ record.visit.time or 'N/A' }}
+        </div>
+    </div>
+
+    <div class="patient-info">
+        <div class="info-row">
+            <span class="info-label">Patient:</span>
+            <span><strong>{{ record.patient.name }}</strong></span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">MRN:</span>
+            <span>{{ record.patient.mrn }}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">DOB:</span>
+            <span>{{ record.patient.dob|format_date }} (Age: {{ record.patient.age }})</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Sex:</span>
+            <span>{{ record.patient.sex }}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Referring Physician:</span>
+            <span>{{ record.referring_physician or 'N/A' }}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Consulting Physician:</span>
+            <span><strong>{{ record.visit.provider }}</strong></span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Specialty:</span>
+            <span>{{ record.specialty or 'General Medicine' }}</span>
+        </div>
+    </div>
+
+    <div class="consultation-box">
+        <h2 style="margin-top: 0; border-bottom: none;">REASON FOR CONSULTATION</h2>
+        <p style="font-size: 16px; margin: 10px 0;">
+            {%- if record.consultation_reason -%}{{ record.consultation_reason }}
+            {%- elif record.chief_complaint is mapping -%}{{ record.chief_complaint.description or 'Not documented' }}
+            {%- elif record.chief_complaint -%}{{ record.chief_complaint }}
+            {%- else -%}Not documented{%- endif -%}
+        </p>
+    </div>
+
+    <div class="section">
+        <h2>HISTORY OF PRESENT ILLNESS</h2>
+        <div class="section-content">
+            {{ record.notes.subjective or record.notes.hpi or 'Not documented' }}
+        </div>
+    </div>
+
+    {% if clinical_suggestions and clinical_suggestions.historical_context %}
+    <div class="section">
+        <h2>RELEVANT MEDICAL HISTORY</h2>
+        <div class="section-content">
+            {% if clinical_suggestions.historical_context.chronic_conditions %}
+            <strong>Chronic Conditions:</strong>
+            {% for condition in clinical_suggestions.historical_context.chronic_conditions %}
+            <div class="list-item">
+                {{ condition.condition }}
+                {% if condition.duration %} ({{ condition.duration }}){% endif %}
+            </div>
+            {% endfor %}
+            {% endif %}
+
+            {% if record.past_medical_history %}
+            <div style="margin-top: 10px;">
+                <strong>Past Medical History:</strong>
+                {% for item in record.past_medical_history %}
+                <div class="list-item">{{ item }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if record.past_surgical_history %}
+            <div style="margin-top: 10px;">
+                <strong>Past Surgical History:</strong>
+                {% for item in record.past_surgical_history %}
+                <div class="list-item">{{ item }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if record.medications %}
+    <div class="section">
+        <h2>CURRENT MEDICATIONS</h2>
+        {% for med in record.medications %}
+        <div class="list-item">
+            {{ med.name }}
+            {% if med.dose %} {{ med.dose }}{% endif %}
+            {% if med.frequency %} {{ med.frequency }}{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if record.allergies %}
+    <div class="section">
+        <h2>ALLERGIES</h2>
+        {% for allergy in record.allergies %}
+        <div class="list-item">
+            <strong>{{ allergy.substance }}</strong>: {{ allergy.reaction }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if record.social_history %}
+    <div class="section">
+        <h2>SOCIAL HISTORY</h2>
+        <div class="section-content">
+            {{ record.social_history }}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if record.family_history %}
+    <div class="section">
+        <h2>FAMILY HISTORY</h2>
+        <div class="section-content">
+            {{ record.family_history }}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="section">
+        <h2>REVIEW OF SYSTEMS</h2>
+        <div class="section-content">
+            {{ record.review_of_systems or 'Patient denies fever, chills, weight loss, chest pain, shortness of breath, abdominal pain, nausea, vomiting.' }}
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>PHYSICAL EXAMINATION</h2>
+        <div class="section-content">
+            {% if record.vital_signs %}
+            <strong>Vital Signs:</strong><br>
+            {% if record.vital_signs.blood_pressure %}<div class="list-item">BP: {{ record.vital_signs.blood_pressure }}</div>{% endif %}
+            {% if record.vital_signs.heart_rate %}<div class="list-item">HR: {{ record.vital_signs.heart_rate }}</div>{% endif %}
+            {% if record.vital_signs.temperature %}<div class="list-item">Temp: {{ record.vital_signs.temperature }}</div>{% endif %}
+            {% if record.vital_signs.respiratory_rate %}<div class="list-item">RR: {{ record.vital_signs.respiratory_rate }}</div>{% endif %}
+            <br>
+            {% endif %}
+
+            {{ record.notes.objective or 'Not documented' }}
+        </div>
+    </div>
+
+    {% if record.labs or record.imaging %}
+    <div class="section">
+        <h2>DIAGNOSTIC STUDIES</h2>
+        <div class="section-content">
+            {% if record.labs %}
+            <strong>Laboratory:</strong>
+            {% for lab in record.labs %}
+            <div class="list-item">
+                {{ lab.test_name }}: {{ lab.value }} {{ lab.unit or '' }}
+                {% if lab.abnormal %}<strong>(Abnormal)</strong>{% endif %}
+            </div>
+            {% endfor %}
+            {% endif %}
+
+            {% if record.imaging %}
+            <div style="margin-top: 10px;">
+                <strong>Imaging:</strong>
+                {% for img in record.imaging %}
+                <div class="list-item">
+                    {{ img.type }}: {{ img.findings }}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="section">
+        <h2>IMPRESSION</h2>
+        <div class="section-content">
+            {% if record.diagnoses %}
+            {% for diagnosis in record.diagnoses %}
+            <div class="list-item">
+                {{ loop.index }}. {{ diagnosis.description }}
+                {% if diagnosis.code %} ({{ diagnosis.code }}){% endif %}
+            </div>
+            {% endfor %}
+            {% else %}
+            {{ record.notes.assessment or 'Not documented' }}
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="recommendation-box">
+        <h2 style="margin-top: 0; border-bottom: none;">RECOMMENDATIONS</h2>
+        <div style="margin: 10px 0;">
+            {{ record.notes.plan or record.recommendations or 'Not documented' }}
+        </div>
+
+        {% if clinical_suggestions and clinical_suggestions.drug_interactions %}
+        <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #ddd;">
+            <strong>⚠️ Clinical Considerations:</strong>
+            {% for interaction in clinical_suggestions.drug_interactions %}
+            <div style="margin: 5px 0;">{{ interaction.recommendation }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="section">
+        <h2>FOLLOW-UP</h2>
+        <div class="section-content">
+            {{ record.follow_up_plan or 'Patient will follow up with referring physician. Available for further consultation as needed.' }}
+        </div>
+    </div>
+
+    <div class="footer">
+        <div>Consultation Generated: {{ generated_at.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+        <div style="margin-top: 15px;">
+            Thank you for this consultation. Please contact me if you have any questions or need further clarification.
+        </div>
+        <div style="margin-top: 20px; border-top: 1px solid #333; width: 300px; padding-top: 5px;">
+            Respectfully,<br><br>
+            {{ record.visit.provider }}, MD<br>
+            {{ record.specialty or 'Consulting Physician' }}<br>
+            Date: {{ record.visit.date|format_date }}
+        </div>
+    </div>
+</body>
+</html>

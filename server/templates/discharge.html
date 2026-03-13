@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discharge Summary - {{ record.patient.name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            line-height: 1.6;
+            color: #333;
+        }
+        .header {
+            border-bottom: 3px solid #2c3e50;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        h1 {
+            color: #2c3e50;
+            margin: 0 0 5px 0;
+            font-size: 26px;
+        }
+        h2 {
+            color: #34495e;
+            font-size: 18px;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #ecf0f1;
+        }
+        .patient-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-left: 4px solid #27ae60;
+            margin-bottom: 20px;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: 150px 1fr;
+            gap: 8px;
+            margin: 5px 0;
+        }
+        .info-label {
+            font-weight: bold;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        .list-item {
+            margin: 5px 0 5px 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        table th {
+            background: #34495e;
+            color: white;
+            padding: 10px;
+            text-align: left;
+        }
+        table td {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+        .highlight-box {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 12px;
+            margin: 10px 0;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 2px solid #ecf0f1;
+            font-size: 12px;
+            color: #666;
+        }
+        @media print {
+            body { margin: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>DISCHARGE SUMMARY</h1>
+        <div style="font-size: 14px; color: #666;">
+            {{ record.facility_name or 'Medical Facility' }}
+        </div>
+    </div>
+
+    <div class="patient-info">
+        <div class="info-grid">
+            <span class="info-label">Patient Name:</span>
+            <span>{{ record.patient.name }}</span>
+
+            <span class="info-label">MRN:</span>
+            <span>{{ record.patient.mrn }}</span>
+
+            <span class="info-label">Date of Birth:</span>
+            <span>{{ record.patient.dob|format_date }} (Age: {{ record.patient.age }})</span>
+
+            <span class="info-label">Sex:</span>
+            <span>{{ record.patient.sex }}</span>
+
+            <span class="info-label">Admission Date:</span>
+            <span>{{ record.visit.admission_date|format_date }}</span>
+
+            <span class="info-label">Discharge Date:</span>
+            <span>{{ record.visit.discharge_date|format_date }}</span>
+
+            <span class="info-label">Attending Physician:</span>
+            <span>{{ record.visit.provider }}</span>
+
+            <span class="info-label">Length of Stay:</span>
+            <span>{{ record.visit.length_of_stay or 'N/A' }}</span>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>ADMISSION DIAGNOSIS</h2>
+        {% if record.admission_diagnoses %}
+        {% for diagnosis in record.admission_diagnoses %}
+        <div class="list-item">
+            {{ loop.index }}. {{ diagnosis.description }}
+            {% if diagnosis.code %} (ICD-10: {{ diagnosis.code }}){% endif %}
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="list-item">
+            {%- if record.chief_complaint is mapping -%}{{ record.chief_complaint.description or 'Not documented' }}
+            {%- elif record.chief_complaint -%}{{ record.chief_complaint }}
+            {%- else -%}Not documented{%- endif -%}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="section">
+        <h2>DISCHARGE DIAGNOSIS</h2>
+        {% if record.diagnoses %}
+        {% for diagnosis in record.diagnoses %}
+        <div class="list-item">
+            {{ loop.index }}. {{ diagnosis.description }}
+            {% if diagnosis.code %} (ICD-10: {{ diagnosis.code }}){% endif %}
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="list-item">Not documented</div>
+        {% endif %}
+    </div>
+
+    <div class="section">
+        <h2>HOSPITAL COURSE</h2>
+        <p>{{ record.notes.hospital_course or record.notes.subjective or 'Patient admitted with above diagnoses. Hospital course was uneventful.' }}</p>
+
+        {% if record.procedures %}
+        <h3 style="font-size: 16px; margin-top: 15px;">Procedures Performed:</h3>
+        {% for procedure in record.procedures %}
+        <div class="list-item">
+            {{ procedure.name }}
+            {% if procedure.date %} ({{ procedure.date|format_date }}){% endif %}
+            {% if procedure.code %} - CPT: {{ procedure.code }}{% endif %}
+        </div>
+        {% if procedure.notes %}
+        <div style="margin-left: 40px; font-size: 14px; color: #666;">
+            {{ procedure.notes }}
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% endif %}
+    </div>
+
+    {% if record.labs %}
+    <div class="section">
+        <h2>SIGNIFICANT LABORATORY FINDINGS</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Test</th>
+                    <th>Result</th>
+                    <th>Reference Range</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for lab in record.labs %}
+                <tr {% if lab.abnormal %}style="background: #fff3cd;"{% endif %}>
+                    <td>{{ lab.test_name }}</td>
+                    <td><strong>{{ lab.value }} {{ lab.unit or '' }}</strong></td>
+                    <td>{{ lab.reference_range or 'N/A' }}</td>
+                    <td>{{ lab.date|format_date if lab.date else 'N/A' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="section">
+        <h2>DISCHARGE MEDICATIONS</h2>
+        {% if record.medications %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Medication</th>
+                    <th>Dose</th>
+                    <th>Route</th>
+                    <th>Frequency</th>
+                    <th>Instructions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for med in record.medications %}
+                <tr>
+                    <td><strong>{{ med.name }}</strong></td>
+                    <td>{{ med.dose or 'N/A' }}</td>
+                    <td>{{ med.route or 'PO' }}</td>
+                    <td>{{ med.frequency or 'N/A' }}</td>
+                    <td>{{ med.instructions or 'Take as directed' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>No medications prescribed at discharge.</p>
+        {% endif %}
+
+        {% if clinical_suggestions and clinical_suggestions.allergy_alerts %}
+        <div class="highlight-box">
+            <strong>⚠️ ALLERGY ALERTS:</strong><br>
+            {% for alert in clinical_suggestions.allergy_alerts %}
+            <div style="margin: 5px 0;">{{ alert.message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    {% if record.allergies %}
+    <div class="section">
+        <h2>ALLERGIES</h2>
+        {% for allergy in record.allergies %}
+        <div class="list-item">
+            <strong>{{ allergy.substance }}</strong>: {{ allergy.reaction }}
+            {% if allergy.severity %} ({{ allergy.severity|capitalize }}){% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="section">
+        <h2>DISCHARGE CONDITION</h2>
+        <p>{{ record.discharge_condition or 'Stable, improved' }}</p>
+    </div>
+
+    <div class="section">
+        <h2>DISCHARGE DISPOSITION</h2>
+        <p>{{ record.discharge_disposition or 'Home with family' }}</p>
+    </div>
+
+    <div class="section">
+        <h2>FOLLOW-UP INSTRUCTIONS</h2>
+        {{ record.notes.plan or 'Patient advised to follow up with primary care physician in 1-2 weeks.' }}
+
+        {% if record.follow_up %}
+        <div style="margin-top: 10px;">
+            <div class="list-item"><strong>Follow-up with:</strong> {{ record.follow_up.provider or 'Primary Care Physician' }}</div>
+            <div class="list-item"><strong>Timeframe:</strong> {{ record.follow_up.timeframe or '1-2 weeks' }}</div>
+            {% if record.follow_up.instructions %}
+            <div class="list-item"><strong>Special Instructions:</strong> {{ record.follow_up.instructions }}</div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="section">
+        <h2>PATIENT EDUCATION</h2>
+        <p>{{ record.patient_education or 'Patient educated on diagnosis, treatment plan, and warning signs. Patient verbalized understanding.' }}</p>
+    </div>
+
+    <div class="footer">
+        <div>Discharge Summary Generated: {{ generated_at.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+        <div>Attending Physician: {{ record.visit.provider }}</div>
+        <div style="margin-top: 20px; border-top: 1px solid #333; width: 300px; padding-top: 5px;">
+            Electronically signed by {{ record.visit.provider }}<br>
+            Date: {{ record.visit.discharge_date|format_date or generated_at.strftime('%Y-%m-%d') }}
+        </div>
+    </div>
+</body>
+</html>

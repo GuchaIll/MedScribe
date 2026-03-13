@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOAP Note - {{ record.visit.date|format_date }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            line-height: 1.6;
+            color: #333;
+        }
+        .header {
+            border-bottom: 3px solid #2c3e50;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+            margin: 0 0 10px 0;
+            font-size: 24px;
+        }
+        .patient-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-left: 4px solid #3498db;
+            margin-bottom: 20px;
+        }
+        .patient-info table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .patient-info td {
+            padding: 5px 10px;
+        }
+        .patient-info td:first-child {
+            font-weight: bold;
+            width: 150px;
+        }
+        .alerts {
+            background: #fff3cd;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .alerts.critical {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+        }
+        .alert-item {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+        }
+        .alert-icon {
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        .section {
+            margin-bottom: 25px;
+        }
+        .section-header {
+            font-weight: bold;
+            font-size: 16px;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #ecf0f1;
+        }
+        .section-content {
+            margin-left: 15px;
+            white-space: pre-wrap;
+        }
+        .list-item {
+            margin: 5px 0 5px 20px;
+        }
+        .vitals {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .vital-box {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .vital-label {
+            font-size: 12px;
+            color: #666;
+        }
+        .vital-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 15px;
+            border-top: 2px solid #ecf0f1;
+            font-size: 12px;
+            color: #666;
+        }
+        .signature-line {
+            margin-top: 30px;
+            border-top: 1px solid #333;
+            width: 300px;
+            padding-top: 5px;
+        }
+        @media print {
+            body { margin: 20px; }
+            .alerts { page-break-inside: avoid; }
+            .section { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>SOAP Note</h1>
+        <div style="font-size: 14px; color: #666;">
+            Date: {{ record.visit.date|format_date }} | Time: {{ record.visit.time or 'N/A' }}
+        </div>
+    </div>
+
+    <div class="patient-info">
+        <table>
+            <tr>
+                <td>Patient:</td>
+                <td><strong>{{ record.patient.name }}</strong></td>
+                <td>MRN:</td>
+                <td><strong>{{ record.patient.mrn }}</strong></td>
+            </tr>
+            <tr>
+                <td>DOB:</td>
+                <td>{{ record.patient.dob|format_date }} (Age: {{ record.patient.age }})</td>
+                <td>Sex:</td>
+                <td>{{ record.patient.sex }}</td>
+            </tr>
+            <tr>
+                <td>Provider:</td>
+                <td>{{ record.visit.provider }}</td>
+                <td>Visit Type:</td>
+                <td>{{ record.visit.type or 'Office Visit' }}</td>
+            </tr>
+        </table>
+    </div>
+
+    {% if clinical_suggestions and (clinical_suggestions.allergy_alerts or clinical_suggestions.drug_interactions) %}
+    <div class="alerts {% if clinical_suggestions.risk_level == 'critical' %}critical{% endif %}">
+        <div style="font-weight: bold; font-size: 16px; margin-bottom: 10px;">
+            ⚠️ CLINICAL ALERTS (Risk Level: {{ clinical_suggestions.risk_level|upper }})
+        </div>
+
+        {% if clinical_suggestions.allergy_alerts %}
+        {% for alert in clinical_suggestions.allergy_alerts %}
+        <div class="alert-item">
+            <span class="alert-icon">🚨</span>
+            <strong>ALLERGY ALERT:</strong> {{ alert.message }}<br>
+            <small style="margin-left: 25px;">
+                Reaction: {{ alert.reaction }} ({{ alert.allergy_severity }})<br>
+                Recommendation: {{ alert.recommendation }}
+            </small>
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        {% if clinical_suggestions.drug_interactions %}
+        {% for interaction in clinical_suggestions.drug_interactions %}
+        <div class="alert-item">
+            <span class="alert-icon">⚡</span>
+            <strong>INTERACTION ({{ interaction.severity|upper }}):</strong> {{ interaction.message }}<br>
+            <small style="margin-left: 25px;">
+                Effect: {{ interaction.effect }}<br>
+                Recommendation: {{ interaction.recommendation }}
+            </small>
+        </div>
+        {% endfor %}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="section">
+        <div class="section-header">CHIEF COMPLAINT</div>
+        <div class="section-content">
+            {% if record.chief_complaint is mapping %}
+                {{ record.chief_complaint.description or 'Not documented' }}
+            {% elif record.chief_complaint %}
+                {{ record.chief_complaint }}
+            {% else %}
+                Not documented
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-header">SUBJECTIVE</div>
+        <div class="section-content">
+            {{ record.notes.subjective or 'No subjective findings documented' }}
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-header">OBJECTIVE</div>
+        <div class="section-content">
+            {% if record.vital_signs %}
+            <div class="vitals">
+                {% if record.vital_signs.temperature %}
+                <div class="vital-box">
+                    <div class="vital-label">Temperature</div>
+                    <div class="vital-value">{{ record.vital_signs.temperature }}</div>
+                </div>
+                {% endif %}
+                {% if record.vital_signs.blood_pressure %}
+                <div class="vital-box">
+                    <div class="vital-label">Blood Pressure</div>
+                    <div class="vital-value">{{ record.vital_signs.blood_pressure }}</div>
+                </div>
+                {% endif %}
+                {% if record.vital_signs.heart_rate %}
+                <div class="vital-box">
+                    <div class="vital-label">Heart Rate</div>
+                    <div class="vital-value">{{ record.vital_signs.heart_rate }}</div>
+                </div>
+                {% endif %}
+                {% if record.vital_signs.respiratory_rate %}
+                <div class="vital-box">
+                    <div class="vital-label">Respiratory Rate</div>
+                    <div class="vital-value">{{ record.vital_signs.respiratory_rate }}</div>
+                </div>
+                {% endif %}
+                {% if record.vital_signs.oxygen_saturation %}
+                <div class="vital-box">
+                    <div class="vital-label">O2 Saturation</div>
+                    <div class="vital-value">{{ record.vital_signs.oxygen_saturation }}</div>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <div style="margin-top: 15px;">
+                {{ record.notes.objective or 'No objective findings documented' }}
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-header">ASSESSMENT</div>
+        <div class="section-content">
+            {% if record.diagnoses %}
+            {% for diagnosis in record.diagnoses %}
+            <div class="list-item">
+                {{ loop.index }}. {{ diagnosis.description }}
+                {% if diagnosis.code %} ({{ diagnosis.code }}){% endif %}
+                {% if diagnosis.status %} - {{ diagnosis.status|capitalize }}{% endif %}
+            </div>
+            {% endfor %}
+            {% else %}
+            {{ record.notes.assessment or 'No assessment documented' }}
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-header">PLAN</div>
+        <div class="section-content">
+            {{ record.notes.plan or 'No plan documented' }}
+
+            {% if record.medications %}
+            <div style="margin-top: 15px;">
+                <strong>Medications Prescribed:</strong>
+                {% for med in record.medications %}
+                <div class="list-item">
+                    {{ med.name }}
+                    {% if med.dose %} {{ med.dose }}{% endif %}
+                    {% if med.route %} {{ med.route }}{% endif %}
+                    {% if med.frequency %} {{ med.frequency }}{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if record.labs %}
+            <div style="margin-top: 15px;">
+                <strong>Labs Ordered:</strong>
+                {% for lab in record.labs %}
+                <div class="list-item">{{ lab.test_name or lab }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if record.allergies %}
+    <div class="section">
+        <div class="section-header">ALLERGIES</div>
+        <div class="section-content">
+            {% for allergy in record.allergies %}
+            <div class="list-item">
+                <strong>{{ allergy.substance }}</strong>: {{ allergy.reaction }}
+                {% if allergy.severity %} ({{ allergy.severity|capitalize }}){% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="footer">
+        <div>Generated: {{ generated_at.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+        <div>Generator Version: {{ generator_version }}</div>
+        {% if clinical_suggestions %}
+        <div style="margin-top: 10px; font-style: italic;">
+            Clinical decision support provided. Review all alerts before finalizing.
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="signature-line">
+        Electronically signed by {{ record.visit.provider }}<br>
+        Date: {{ record.visit.date|format_date }}
+    </div>
+</body>
+</html>
