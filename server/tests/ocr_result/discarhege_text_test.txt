@@ -1,0 +1,294 @@
+========================================================================
+  OCR Extraction Report
+  File: discarhege_text_test.pdf
+  Processed: 2026-03-11 19:14:28
+========================================================================
+
+── Document Classification ──
+  Type       : discharge_summary
+  Confidence : 0.85
+  Sections   : Medications
+  Reasoning  : Keyword match: scored 0.85 for discharge_summary
+
+── Metrics ──
+  Pages            : 5
+  Overall confidence: 0.95
+  OCR engines      : text_layer
+  Fields extracted : 35
+  Conflicts found  : 36
+
+── Extracted Fields ──
+
+  [DEMOGRAPHIC]
+    patient_name: John Doe Medical Record (conf: 0.57)
+    mrn: 123456789 (conf: 0.57)
+
+  [DIAGNOSIS]
+    diagnosis: Left-sided systolic congestive heart failure EF of 35% on echo performed 3 mo... (conf: 0.47)
+    diagnosis: Left intertrochanteric hip fracture Procedure: Left hemiarthroplasty Orthoped... (conf: 0.47)
+    diagnosis: Post-op atrial fibrillation Congestive heart failure – EF of 40% on echo May ... (conf: 0.47)
+
+  [MEDICATION]
+    physician: Physician (conf: 0.47)
+    gentleman: gentleman (conf: 0.47)
+    gain: gain (conf: 0.47)
+    pain: pain (conf: 0.47)
+    mexican: Mexican (conf: 0.47)
+    wean: wean (conf: 0.47)
+    exam: exam (conf: 0.47)
+    control: control (conf: 0.47)
+    lisinopril: lisinopril (conf: 0.47)
+    metoprolol: metoprolol (conf: 0.47)
+    tylenol: Tylenol (conf: 0.47)
+    none: None (conf: 0.47)
+    metorolol: Metorolol 50 mg (conf: 0.47) [dose=50 mg]
+    furosemide: Furosemide 40 mg (conf: 0.47) [dose=40 mg]
+    spironolactone: Spironolactone 50 mg (conf: 0.47) [dose=50 mg]
+    metformin: Metformin 1000 mg (conf: 0.47) [dose=1000 mg]
+    glipizide: Glipizide 10 mg (conf: 0.47) [dose=10 mg]
+    baseline: baseline (conf: 0.47)
+    woman: woman (conf: 0.47)
+    immediate: immediate (conf: 0.47)
+    morphine: morphine (conf: 0.47)
+    sulfate: sulfate 30mg (conf: 0.47) [dose=30mg]
+    remain: remain (conf: 0.47)
+    vein: vein (conf: 0.47)
+    until: until (conf: 0.47)
+    again: again (conf: 0.47)
+    done: done (conf: 0.47)
+    medicine: medicine (conf: 0.47)
+    within: within (conf: 0.47)
+    scan: scan (conf: 0.47)
+
+── Conflicts ──
+  [MEDIUM] low_confidence
+    Field   : physician
+    Value   : Physician
+    Message : Field 'physician' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : gentleman
+    Value   : gentleman
+    Message : Field 'gentleman' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : gain
+    Value   : gain
+    Message : Field 'gain' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : pain
+    Value   : pain
+    Message : Field 'pain' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : mexican
+    Value   : Mexican
+    Message : Field 'mexican' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : wean
+    Value   : wean
+    Message : Field 'wean' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : exam
+    Value   : exam
+    Message : Field 'exam' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : control
+    Value   : control
+    Message : Field 'control' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : lisinopril
+    Value   : lisinopril
+    Message : Field 'lisinopril' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : metoprolol
+    Value   : metoprolol
+    Message : Field 'metoprolol' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : tylenol
+    Value   : Tylenol
+    Message : Field 'tylenol' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : none
+    Value   : None
+    Message : Field 'none' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : metorolol
+    Value   : Metorolol 50 mg
+    Message : Field 'metorolol' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : furosemide
+    Value   : Furosemide 40 mg
+    Message : Field 'furosemide' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : spironolactone
+    Value   : Spironolactone 50 mg
+    Message : Field 'spironolactone' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : metformin
+    Value   : Metformin 1000 mg
+    Message : Field 'metformin' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : glipizide
+    Value   : Glipizide 10 mg
+    Message : Field 'glipizide' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : baseline
+    Value   : baseline
+    Message : Field 'baseline' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : woman
+    Value   : woman
+    Message : Field 'woman' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : immediate
+    Value   : immediate
+    Message : Field 'immediate' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : morphine
+    Value   : morphine
+    Message : Field 'morphine' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : sulfate
+    Value   : sulfate 30mg
+    Message : Field 'sulfate' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : remain
+    Value   : remain
+    Message : Field 'remain' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : vein
+    Value   : vein
+    Message : Field 'vein' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : until
+    Value   : until
+    Message : Field 'until' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : again
+    Value   : again
+    Message : Field 'again' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : done
+    Value   : done
+    Message : Field 'done' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : medicine
+    Value   : medicine
+    Message : Field 'medicine' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : within
+    Value   : within
+    Message : Field 'within' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : scan
+    Value   : scan
+    Message : Field 'scan' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : diagnosis
+    Value   : Left-sided systolic congestive heart failure EF of 35% on echo performed 3 months ago Other diagnose
+    Message : Field 'diagnosis' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : diagnosis
+    Value   : Left intertrochanteric hip fracture Procedure: Left hemiarthroplasty Orthopedist: Dr. Cal Seeyum Oth
+    Message : Field 'diagnosis' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [MEDIUM] low_confidence
+    Field   : diagnosis
+    Value   : Post-op atrial fibrillation Congestive heart failure – EF of 40% on echo May 2049 Coronary artery di
+    Message : Field 'diagnosis' has low extraction confidence (0.47)
+    Action  : Verify this value manually during review.
+
+  [HIGH] contradictory_value
+    Field   : diagnosis
+    Value   : Left-sided systolic congestive heart failure EF of 35% on echo performed 3 months ago Other diagnose vs Left intertrochanteric hip fracture Procedure: Left hemiarthroplasty Orthopedist: Dr. Cal Seeyum Oth vs Post-op atrial fibrillation Congestive heart failure – EF of 40% on echo May 2049 Coronary artery di
+    Message : Multiple different values for 'diagnosis': Left-sided systolic congestive heart failure EF of 35% on echo performed 3 months ago Other diagnose, Left intertrochanteric hip fracture Procedure: Left hemiarthroplasty Orthopedist: Dr. Cal Seeyum Oth, Post-op atrial fibrillation Congestive heart failure – EF of 40% on echo May 2049 Coronary artery di
+    Action  : Verify which value is correct.
+
+  [HIGH] demographic_mismatch
+    Field   : patient_name
+    Value   : John Doe Medical Record
+    Existing: Test Patient
+    Message : Name mismatch: extracted 'John Doe Medical Record' vs existing 'Test Patient'
+    Action  : Verify patient identity. Document may belong to a different patient.
+
+  [MEDIUM] duplicate_medication
+    Field   : metformin
+    Value   : Metformin 1000 mg
+    Existing: metformin 500mg
+    Message : Medication 'metformin' already in record with different dosage: 500mg vs 1000 mg
+    Action  : Verify if dosage change is intended or an error.
+
+
+── Full Extracted Text (first 3000 chars) ──
+Patient name: John Doe Medical Record Number: 123456789 Date admitted: July 1, 2050 Date discharged: July 3, 2050 Attending Physician: Dr. Will Teachwell Resident Physician: Dr. Bea Goodoc Diagnosis: Left-sided systolic congestive heart failure EF of 35% on echo performed 3 months ago Other diagnoses: Type 2 Diabetes Stage 2 Hypertension Osteoarthritis History:
+Mr. Doe is a 72 year old gentleman with a history of congestive heart failure who presented with a 3 day history of gradually worsening lower extremity edema, weight gain, and shortness of breath. Today while trying to mow his lawn he had to stop multiple times to catch his breath and developed some chest tightness leading him to come to the emergency room. He denies any other decrease in exercise tolerance or chest pain leading up to this event. He reports good understanding and adherence to his medications, but does report that when his daughter was visiting town 4 days prior to admission that he and his wife took her out for a special Mexican dinner and he indulged in several baskets of chips and salsa.
+Problems:
+1. congestive heart failure – On admission he had 3+ lower extremity pitting edema, rales from the bases to midlung bilaterally, elevated jugular venous pressure and a CXR consistent with volume overload. He was diuresed and was able to quickly wean off supplemental oxygen and exam revealed resolution of his edema and rales at discharge. Discharge weight is 202 lbs. Given that dietary indiscretion led to the exacerbation, it was not felt necessary to change his home diuretic regimen at this time. He was re- educated on diet and taking daily weights including information about weight gain that should trigger him to call his primary doctor. He will follow up with his doctor at the end of this week for volume reassessment and electrolyte labs.
+2. Chest pain – due to chest pain while mowing, he was ruled out for an myocardial infarction with serial EKGs and enzymes. His EKGs remained unchanged from previous and his enzyme curve remained normal. Chest pain was attributed to his hypoxia from his congestive heart failure and no further work-up was pursued at this time. On
+
+follow-up, should readdress and make sure that he remains without change in his exercise tolerance and remains pain free now that he is back to euvolemia.
+3. Type 2 Diabetes – His HgbAlC was 7.3 which is good control for him at this time. No changes were made to his diabetic regimen. On health maintenance questioning he revealed it has been 18 months since his last eye appointment and we recommended he make an appointment as soon as he can get in.
+4. Hypertension – Though initially elevated at the time of admission, his blood pressure came down nicely with diuresis and was 142/82 once euvolemic. In keeping with JNC-7 guidelines, we increased his lisinopril to 40 mg/day and his metoprolol to 50mg twice daily for optimal blood pressure control given his diabetes. He resonded well to this without complications and was 
+
+========================================================================

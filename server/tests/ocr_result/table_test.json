@@ -1,0 +1,48 @@
+{
+  "document_id": "doc_74afb9d5dc2b",
+  "original_filename": "table_test.jpeg",
+  "page_count": 1,
+  "overall_confidence": 82.75,
+  "ocr_engines_used": [
+    "paddleocr"
+  ],
+  "classification": {
+    "doc_type": "prescription",
+    "confidence": 0.73
+  },
+  "extracted_fields": [
+    {
+      "field_id": "fld_84a61229ed6d",
+      "field_name": "giveltabaspirin",
+      "value": "GivelTABaspirin",
+      "category": "medication",
+      "confidence": 41.38,
+      "source_span": "GivelTABaspirin",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_e9a11693fc22",
+      "field_name": "giveltabmetoprololtartrate",
+      "value": "GivelTABmetoprololtartrate",
+      "category": "medication",
+      "confidence": 41.38,
+      "source_span": "GivelTABmetoprololtartrate",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_48e88f178b9e",
+      "field_name": "prnchestpain",
+      "value": "PRNchestpain",
+      "category": "medication",
+      "confidence": 41.38,
+      "source_span": "PRNchestpain",
+      "extraction_method": "regex",
+      "metadata": {}
+    }
+  ],
+  "conflicts": [],
+  "processing_errors": [],
+  "full_text_length": 636
+}

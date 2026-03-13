@@ -1,0 +1,189 @@
+{
+  "document_id": "doc_209093ca2de2",
+  "original_filename": "img-sample-consolidated-medical-record-summ.jpg",
+  "page_count": 1,
+  "overall_confidence": 81.74,
+  "ocr_engines_used": [
+    "paddleocr"
+  ],
+  "classification": {
+    "doc_type": "medical_history",
+    "confidence": 0.69
+  },
+  "extracted_fields": [
+    {
+      "field_id": "fld_c6e510e0ea5b",
+      "field_name": "patient_name",
+      "value": "RRS DEMO Face Amount",
+      "category": "demographic",
+      "confidence": 49.04,
+      "source_span": "Name: RRS DEMO Face Amount",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_832bee08b388",
+      "field_name": "date_of_birth",
+      "value": "01/01/1985",
+      "category": "demographic",
+      "confidence": 49.04,
+      "source_span": "DOB:\n01/01/1985",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_54f64e7ddc19",
+      "field_name": "sex",
+      "value": "Male",
+      "category": "demographic",
+      "confidence": 49.04,
+      "source_span": "Gender: Male",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_bc52e453fe01",
+      "field_name": "age",
+      "value": "37",
+      "category": "demographic",
+      "confidence": 49.04,
+      "source_span": "Age:\n37 ",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_bc9172822917",
+      "field_name": "electrocardiogram",
+      "value": "electrocardiogram",
+      "category": "medication",
+      "confidence": 40.87,
+      "source_span": "electrocardiogram",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_7ea0dcd76c7b",
+      "field_name": "alcohol",
+      "value": "Alcohol",
+      "category": "medication",
+      "confidence": 40.87,
+      "source_span": "Alcohol",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_20125e60d058",
+      "field_name": "wine",
+      "value": "wine",
+      "category": "medication",
+      "confidence": 40.87,
+      "source_span": "wine",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_1a05eff039f6",
+      "field_name": "alne",
+      "value": "AlNe",
+      "category": "medication",
+      "confidence": 40.87,
+      "source_span": "AlNe",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_b98afeab6a78",
+      "field_name": "exam",
+      "value": "exam",
+      "category": "medication",
+      "confidence": 40.87,
+      "source_span": "exam",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_4213cef16917",
+      "field_name": "pain",
+      "value": "pain",
+      "category": "medication",
+      "confidence": 40.87,
+      "source_span": "pain",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_6e8e06dd22bf",
+      "field_name": "hdl",
+      "value": 42.0,
+      "category": "lab_result",
+      "confidence": 49.04,
+      "source_span": "HDL: 42 ",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_fa5b3c4ec069",
+      "field_name": "glucose",
+      "value": 100.0,
+      "category": "lab_result",
+      "confidence": 49.04,
+      "source_span": "Glucose: 100 ",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_0f6d4da4ef19",
+      "field_name": "ast",
+      "value": 6.0,
+      "category": "lab_result",
+      "confidence": 49.04,
+      "source_span": "ast 6 ",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_042ce93e02cd",
+      "field_name": "weight",
+      "value": "227",
+      "category": "vital_sign",
+      "confidence": 53.13,
+      "source_span": "Weight:\n227 Lbs",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_6b65168b5e9d",
+      "field_name": "height",
+      "value": "5",
+      "category": "vital_sign",
+      "confidence": 53.13,
+      "source_span": "Height:\n5",
+      "extraction_method": "regex",
+      "metadata": {}
+    }
+  ],
+  "conflicts": [
+    {
+      "conflict_id": "cfl_2bae4eed8c86",
+      "field_name": "patient_name",
+      "extracted_value": "RRS DEMO Face Amount",
+      "existing_value": "Test Patient",
+      "conflict_type": "demographic_mismatch",
+      "severity": "high",
+      "message": "Name mismatch: extracted 'RRS DEMO Face Amount' vs existing 'Test Patient'",
+      "recommendation": "Verify patient identity. Document may belong to a different patient."
+    },
+    {
+      "conflict_id": "cfl_06cd58d2ad57",
+      "field_name": "date_of_birth",
+      "extracted_value": "01/01/1985",
+      "existing_value": "01/01/1970",
+      "conflict_type": "demographic_mismatch",
+      "severity": "high",
+      "message": "DOB mismatch: extracted '01/01/1985' vs existing '01/01/1970'",
+      "recommendation": "Verify patient identity."
+    }
+  ],
+  "processing_errors": [],
+  "full_text_length": 1364
+}

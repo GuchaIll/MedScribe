@@ -1,0 +1,92 @@
+========================================================================
+  OCR Extraction Report
+  File: img-sample-consolidated-medical-record-summ.jpg
+  Processed: 2026-03-11 19:14:44
+========================================================================
+
+── Document Classification ──
+  Type       : medical_history
+  Confidence : 0.69
+  Sections   : RECORDRETRIEVAL
+SOLUTIONS
+C
+  Reasoning  : Keyword match: scored 0.69 for medical_history
+
+── Metrics ──
+  Pages            : 1
+  Overall confidence: 81.74
+  OCR engines      : paddleocr
+  Fields extracted : 15
+  Conflicts found  : 2
+
+── Extracted Fields ──
+
+  [DEMOGRAPHIC]
+    patient_name: RRS DEMO Face Amount (conf: 49.04)
+    date_of_birth: 01/01/1985 (conf: 49.04)
+    sex: Male (conf: 49.04)
+    age: 37 (conf: 49.04)
+
+  [LAB_RESULT]
+    hdl: 42.0 (conf: 49.04)
+    glucose: 100.0 (conf: 49.04)
+    ast: 6.0 (conf: 49.04)
+
+  [MEDICATION]
+    electrocardiogram: electrocardiogram (conf: 40.87)
+    alcohol: Alcohol (conf: 40.87)
+    wine: wine (conf: 40.87)
+    alne: AlNe (conf: 40.87)
+    exam: exam (conf: 40.87)
+    pain: pain (conf: 40.87)
+
+  [VITAL_SIGN]
+    weight: 227 (conf: 53.13)
+    height: 5 (conf: 53.13)
+
+── Conflicts ──
+  [HIGH] demographic_mismatch
+    Field   : patient_name
+    Value   : RRS DEMO Face Amount
+    Existing: Test Patient
+    Message : Name mismatch: extracted 'RRS DEMO Face Amount' vs existing 'Test Patient'
+    Action  : Verify patient identity. Document may belong to a different patient.
+
+  [HIGH] demographic_mismatch
+    Field   : date_of_birth
+    Value   : 01/01/1985
+    Existing: 01/01/1970
+    Message : DOB mismatch: extracted '01/01/1985' vs existing '01/01/1970'
+    Action  : Verify patient identity.
+
+
+── Full Extracted Text (first 3000 chars) ──
+RECORDRETRIEVAL
+SOLUTIONS
+ConsolidatedMedicalReport Policy Id:
+Client Name: RRS DEMO Face Amount: $0.00 DOB:
+01/01/1985 Height:
+5'"9"(01/30/2017) Last Dr Visit:
+Last electrocardiogram:
+Age:
+37 06/27/2018 Weight:
+227 Lbs (06/27/2018) Last Lab: 06/27/2018 Gender: Male BMI:
+33.52 Last TC: 249(<200) (01/23/2017) Last HDL: 42 (01/23/2017) Last AlC: 5.5(04/02/2015) Last Glucose: 100 (06/27/2018) Tobacco Use History Alcohol Use History Use:
+Use:
+Non-Smoker Yes Type:
+Type:
+wine Quit Date:
+Current Use:
+1-7/wk Details:
+Per 6/27/2018 Treatment:
+N0
+Details:
+1 glass every day (per 6/27/2018) Blood Pressure Readings Last Reading 3mo.Avg 6mo.Avg 12mo. Avg 18 mo. Avg 24 mo. Avg N/A 128/80(06/27/2018) N/A N/A N/A Family History Age Alive Age Cause of Death Alive Cause of Death Mother 55 Alive 85 Dead Cardiac sibling AlNe 33 sibling 52 peag Cancer Summary preparedfor the folowing 1 documents) received APSRedact OneAPSPdf (40) 09/18/2021 High Level Snap Shot 43 YOM [DOB redacted] MEDICAL history:
+* Post-coital HA:
+-Eval'd6/27/18,Nml exam * Intermittent CP:
+* Obesity:
+-Noted 1/30/17.
+- Since 04/02/15, *Abnml UA:
+-3/16 Life Insurance Exam Medkal Summary 4/2/2015-Peter Ransmeler,MD Pg.3335 Functional/Social History SH: Exerc Lifts weights heavily.Primary form of exer.cycling, weight lifting, wt incr.15lbs since working out: Lirnited exerc last 6 mos d/t knee pain.
+
+========================================================================

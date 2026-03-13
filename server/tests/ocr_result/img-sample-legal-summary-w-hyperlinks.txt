@@ -1,0 +1,40 @@
+========================================================================
+  OCR Extraction Report
+  File: img-sample-legal-summary-w-hyperlinks.jpg
+  Processed: 2026-03-11 13:11:18
+========================================================================
+
+── Document Classification ──
+  Type       : lab_report
+  Confidence : 0.51
+  Reasoning  : Keyword match: scored 0.51 for lab_report
+
+── Metrics ──
+  Pages            : 1
+  Overall confidence: 84.51
+  OCR engines      : paddleocr
+  Fields extracted : 4
+  Conflicts found  : 0
+
+── Extracted Fields ──
+
+  [MEDICATION]
+    pain: pain (conf: 42.26)
+    michigan: Michigan (conf: 42.26)
+    tramadol: Tramadol (conf: 42.26)
+    physician: Physician (conf: 42.26)
+
+── Conflicts ──
+  (no conflicts)
+
+── Full Extracted Text (first 3000 chars) ──
+Medical Conditions Before Chronic back pain since 1989 757 Accident.
+·Seropositive RA since4/12 Episode of post menopausal bleeding 5/11 Injuries directly as a result of 8/27/19-hjury was yesterday when was in a golf cart, went into a ditch and was bounced up 32-213 accident?
+Surgery underwent as a:L1 kyphoplasty 2/21/20 799- result of the accident?
+806 Did patient retum to work?
+Works as a hairdresser 3 days per week 750.
+757 Impact of Injury on C3/02/21-Able to do all self-care wio help w/ exception of helping patient in and out of 799- ADLs/Quality of Life?
+shower,puttingthe wraps onbl legs andbraceonfoot,aswell as shoes onpatient'sfeet.
+806 Gait slightly hunched over and severely antalgic. Limited ROM Rt LE significant weakness throughout to include Rt foot drop patient wears AFO 08/27/19- Sustained fracture while visiting with family in Michigan over the weekend. Riding in a Injury (due to) 20-23 golf cart that hit a culvert causing passengers to balance in the golf cart and come down w/ hard landing- Medical Condition of Patient 05/26/21 854 as perlast available records Dental abscess wi dental pain-Willcont to use Tramadol an prm basis including dental pain 858 (any treatment/surgery that they will need) Medical Expenses and Damages Summary Date Provider Service Dollar Amount Page Range 08/21/2018 Northwest Benton County Physician Services, LLC Office visit $274.00 883-883 $186.00 Northwest Benton County Physician Services, LLC Office visit 09/05/2018 883-883 Northwest Benton County Physician Services, LLC Venipuncture; complete blood count $81 12/04/2018 884-884 Nortrwest Benton County Physician Services, LLC 01/02/2019 Office visit $186 01/16/2019 Northwest Benton County Physician Services, LLC Annual wellness visit S435 885-885 Nortiwest Benton County Physician Services, LLC Office visit 08/08/2019 $274.00 885-885 08/22/2019 Northwest Benton County Physician Services, LLC $56 Venipuncture; Urinalysis 885-886 Northwest Benton County Physician Services, LLC $274 02/07/2020 Office visit 886-886
+
+========================================================================

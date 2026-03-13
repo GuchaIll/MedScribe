@@ -1,0 +1,58 @@
+{
+  "document_id": "doc_4bba11accbfa",
+  "original_filename": "img-sample-legal-summary-w-hyperlinks.jpg",
+  "page_count": 1,
+  "overall_confidence": 84.51,
+  "ocr_engines_used": [
+    "paddleocr"
+  ],
+  "classification": {
+    "doc_type": "lab_report",
+    "confidence": 0.51
+  },
+  "extracted_fields": [
+    {
+      "field_id": "fld_f49502ab3832",
+      "field_name": "pain",
+      "value": "pain",
+      "category": "medication",
+      "confidence": 42.26,
+      "source_span": "pain",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_98c439a1be20",
+      "field_name": "michigan",
+      "value": "Michigan",
+      "category": "medication",
+      "confidence": 42.26,
+      "source_span": "Michigan",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_540cd34f1649",
+      "field_name": "tramadol",
+      "value": "Tramadol",
+      "category": "medication",
+      "confidence": 42.26,
+      "source_span": "Tramadol",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_73579a350b4e",
+      "field_name": "physician",
+      "value": "Physician",
+      "category": "medication",
+      "confidence": 42.26,
+      "source_span": "Physician",
+      "extraction_method": "regex",
+      "metadata": {}
+    }
+  ],
+  "conflicts": [],
+  "processing_errors": [],
+  "full_text_length": 2036
+}

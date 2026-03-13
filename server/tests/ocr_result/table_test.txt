@@ -1,0 +1,32 @@
+========================================================================
+  OCR Extraction Report
+  File: table_test.jpeg
+  Processed: 2026-03-11 13:11:22
+========================================================================
+
+── Document Classification ──
+  Type       : prescription
+  Confidence : 0.73
+  Reasoning  : Keyword match: scored 0.73 for prescription
+
+── Metrics ──
+  Pages            : 1
+  Overall confidence: 82.75
+  OCR engines      : paddleocr
+  Fields extracted : 3
+  Conflicts found  : 0
+
+── Extracted Fields ──
+
+  [MEDICATION]
+    giveltabaspirin: GivelTABaspirin (conf: 41.38)
+    giveltabmetoprololtartrate: GivelTABmetoprololtartrate (conf: 41.38)
+    prnchestpain: PRNchestpain (conf: 41.38)
+
+── Conflicts ──
+  (no conflicts)
+
+── Full Extracted Text (first 3000 chars) ──
+Time Start Wed Allergies Medication 08/29 Stop Route Frequency Patient List eMAR 08/29/121530 AspirinEC81mgPODAILY 0900 GivelTABaspirin EC81mg Notes ACTIVE daily (Aspir...) Flowsheet 0900 08/29/121600 Furosemide80mgPODAILY Orders Give2TABfurosemide40mg ACTIVE daily (Lasi...) Acknowledge 08/29/121632 Digoxin0.125mgPODAILY 0900 Give1TABdigoxin0.125mg Verify ACTIVE daily (Digit...) Metoprololtartrate25mg 0900 Data 08/29/121635 POq12 2100 2105 Print ACTIVE GivelTABmetoprololtartrate Review 25mgevery12hours(Lopr...) Reference 08/29/121640 Nitroglycerin0.4mgSLQ5MIN 1915 Reconcile PRNchestpain Other Reports Preferences Data Change Exit
+
+========================================================================

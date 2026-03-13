@@ -1,0 +1,741 @@
+{
+  "document_id": "doc_a0400779509f",
+  "original_filename": "discarhege_text_test.pdf",
+  "page_count": 5,
+  "overall_confidence": 0.95,
+  "ocr_engines_used": [
+    "text_layer"
+  ],
+  "classification": {
+    "doc_type": "discharge_summary",
+    "confidence": 0.85
+  },
+  "extracted_fields": [
+    {
+      "field_id": "fld_cb41b1987a5c",
+      "field_name": "patient_name",
+      "value": "John Doe Medical Record",
+      "category": "demographic",
+      "confidence": 0.57,
+      "source_span": "Patient name: John Doe Medical Record",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_b985db26dcee",
+      "field_name": "mrn",
+      "value": "123456789",
+      "category": "demographic",
+      "confidence": 0.57,
+      "source_span": "Medical Record Number: 123456789",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_adcac01d55a2",
+      "field_name": "physician",
+      "value": "Physician",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "Physician",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_b8572541c658",
+      "field_name": "gentleman",
+      "value": "gentleman",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "gentleman",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_c8c334eb7759",
+      "field_name": "gain",
+      "value": "gain",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "gain",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_52042beabb19",
+      "field_name": "pain",
+      "value": "pain",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "pain",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_63202296bf71",
+      "field_name": "mexican",
+      "value": "Mexican",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "Mexican",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_454c516bc3aa",
+      "field_name": "wean",
+      "value": "wean",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "wean",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_724a09f9ea08",
+      "field_name": "exam",
+      "value": "exam",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "exam",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_bd36cb24b4be",
+      "field_name": "control",
+      "value": "control",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "control",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_b814003f96d5",
+      "field_name": "lisinopril",
+      "value": "lisinopril",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "lisinopril",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_3e43413ae0a1",
+      "field_name": "metoprolol",
+      "value": "metoprolol",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "metoprolol",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_e5160e510e85",
+      "field_name": "tylenol",
+      "value": "Tylenol",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "Tylenol",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_48254ef96bce",
+      "field_name": "none",
+      "value": "None",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "None",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_08cdee908074",
+      "field_name": "metorolol",
+      "value": "Metorolol 50 mg",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "Metorolol 50 mg",
+      "extraction_method": "regex",
+      "metadata": {
+        "dose": "50 mg"
+      }
+    },
+    {
+      "field_id": "fld_7fa0dea3545e",
+      "field_name": "furosemide",
+      "value": "Furosemide 40 mg",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "Furosemide 40 mg",
+      "extraction_method": "regex",
+      "metadata": {
+        "dose": "40 mg"
+      }
+    },
+    {
+      "field_id": "fld_34e608568f51",
+      "field_name": "spironolactone",
+      "value": "Spironolactone 50 mg",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "Spironolactone 50 mg",
+      "extraction_method": "regex",
+      "metadata": {
+        "dose": "50 mg"
+      }
+    },
+    {
+      "field_id": "fld_dcc3b6539a1b",
+      "field_name": "metformin",
+      "value": "Metformin 1000 mg",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "Metformin 1000 mg",
+      "extraction_method": "regex",
+      "metadata": {
+        "dose": "1000 mg"
+      }
+    },
+    {
+      "field_id": "fld_dbec0293718b",
+      "field_name": "glipizide",
+      "value": "Glipizide 10 mg",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "Glipizide 10 mg",
+      "extraction_method": "regex",
+      "metadata": {
+        "dose": "10 mg"
+      }
+    },
+    {
+      "field_id": "fld_ad0656cbe2a4",
+      "field_name": "baseline",
+      "value": "baseline",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "baseline",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_32bc16e2d06a",
+      "field_name": "woman",
+      "value": "woman",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "woman",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_a1bec50065af",
+      "field_name": "immediate",
+      "value": "immediate",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "immediate",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_ad78771cdc27",
+      "field_name": "morphine",
+      "value": "morphine",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "morphine",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_4f16ee6c9419",
+      "field_name": "sulfate",
+      "value": "sulfate 30mg",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "sulfate 30mg",
+      "extraction_method": "regex",
+      "metadata": {
+        "dose": "30mg"
+      }
+    },
+    {
+      "field_id": "fld_23df38daf05c",
+      "field_name": "remain",
+      "value": "remain",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "remain",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_0c0eda8cc19d",
+      "field_name": "vein",
+      "value": "vein",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "vein",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_9dd232c5eac8",
+      "field_name": "until",
+      "value": "until",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "until",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_7613ab80faeb",
+      "field_name": "again",
+      "value": "again",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "again",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_8616f8a96c15",
+      "field_name": "done",
+      "value": "done",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "done",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_45213191dec8",
+      "field_name": "medicine",
+      "value": "medicine",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "medicine",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_0063becde846",
+      "field_name": "within",
+      "value": "within",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "within",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_5cb003437ebc",
+      "field_name": "scan",
+      "value": "scan",
+      "category": "medication",
+      "confidence": 0.47,
+      "source_span": "scan",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_e7fc87d242bf",
+      "field_name": "diagnosis",
+      "value": "Left-sided systolic congestive heart failure EF of 35% on echo performed 3 months ago Other diagnose",
+      "category": "diagnosis",
+      "confidence": 0.47,
+      "source_span": "Diagnosis: Left-sided systolic congestive heart failure EF of 35% on echo performed 3 months ago Oth",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_f45b9bea90df",
+      "field_name": "diagnosis",
+      "value": "Left intertrochanteric hip fracture Procedure: Left hemiarthroplasty Orthopedist: Dr. Cal Seeyum Oth",
+      "category": "diagnosis",
+      "confidence": 0.47,
+      "source_span": "Diagnosis: Left intertrochanteric hip fracture Procedure: Left hemiarthroplasty Orthopedist: Dr. Cal",
+      "extraction_method": "regex",
+      "metadata": {}
+    },
+    {
+      "field_id": "fld_6c5726d70091",
+      "field_name": "diagnosis",
+      "value": "Post-op atrial fibrillation Congestive heart failure \u2013 EF of 40% on echo May 2049 Coronary artery di",
+      "category": "diagnosis",
+      "confidence": 0.47,
+      "source_span": "diagnoses: Post-op atrial fibrillation Congestive heart failure \u2013 EF of 40% on echo May 2049 Coronar",
+      "extraction_method": "regex",
+      "metadata": {}
+    }
+  ],
+  "conflicts": [
+    {
+      "conflict_id": "cfl_cd428ccd9960",
+      "field_name": "physician",
+      "extracted_value": "Physician",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'physician' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_ad63faf2472b",
+      "field_name": "gentleman",
+      "extracted_value": "gentleman",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'gentleman' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_ce014373c86f",
+      "field_name": "gain",
+      "extracted_value": "gain",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'gain' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_874de9097f9c",
+      "field_name": "pain",
+      "extracted_value": "pain",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'pain' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_4bc91524a8df",
+      "field_name": "mexican",
+      "extracted_value": "Mexican",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'mexican' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_839fbe19b91f",
+      "field_name": "wean",
+      "extracted_value": "wean",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'wean' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_3da74d0af6c3",
+      "field_name": "exam",
+      "extracted_value": "exam",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'exam' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_db15057451dd",
+      "field_name": "control",
+      "extracted_value": "control",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'control' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_173510a40446",
+      "field_name": "lisinopril",
+      "extracted_value": "lisinopril",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'lisinopril' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_62551e687b91",
+      "field_name": "metoprolol",
+      "extracted_value": "metoprolol",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'metoprolol' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_861fabd6d603",
+      "field_name": "tylenol",
+      "extracted_value": "Tylenol",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'tylenol' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_19cd91c76a30",
+      "field_name": "none",
+      "extracted_value": "None",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'none' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_12bee41db8d7",
+      "field_name": "metorolol",
+      "extracted_value": "Metorolol 50 mg",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'metorolol' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_9c6c3f995954",
+      "field_name": "furosemide",
+      "extracted_value": "Furosemide 40 mg",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'furosemide' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_057b90c0d481",
+      "field_name": "spironolactone",
+      "extracted_value": "Spironolactone 50 mg",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'spironolactone' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_2c1d60ce5c01",
+      "field_name": "metformin",
+      "extracted_value": "Metformin 1000 mg",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'metformin' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_984e3ac3b8d2",
+      "field_name": "glipizide",
+      "extracted_value": "Glipizide 10 mg",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'glipizide' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_41b332266971",
+      "field_name": "baseline",
+      "extracted_value": "baseline",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'baseline' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_57441ef0c382",
+      "field_name": "woman",
+      "extracted_value": "woman",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'woman' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_d8876ac4d999",
+      "field_name": "immediate",
+      "extracted_value": "immediate",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'immediate' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_0c33b8e99225",
+      "field_name": "morphine",
+      "extracted_value": "morphine",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'morphine' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_c9ef235dbdd8",
+      "field_name": "sulfate",
+      "extracted_value": "sulfate 30mg",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'sulfate' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_7a9e57363cbc",
+      "field_name": "remain",
+      "extracted_value": "remain",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'remain' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_7fd38ba9a554",
+      "field_name": "vein",
+      "extracted_value": "vein",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'vein' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_2d4f27217809",
+      "field_name": "until",
+      "extracted_value": "until",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'until' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_c90b0c87c377",
+      "field_name": "again",
+      "extracted_value": "again",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'again' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_1d24c167cd01",
+      "field_name": "done",
+      "extracted_value": "done",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'done' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_abeaea02541b",
+      "field_name": "medicine",
+      "extracted_value": "medicine",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'medicine' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_50ecc24e5962",
+      "field_name": "within",
+      "extracted_value": "within",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'within' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_dd7448a61de2",
+      "field_name": "scan",
+      "extracted_value": "scan",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'scan' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_4495ed4d4251",
+      "field_name": "diagnosis",
+      "extracted_value": "Left-sided systolic congestive heart failure EF of 35% on echo performed 3 months ago Other diagnose",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'diagnosis' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_399352a319d8",
+      "field_name": "diagnosis",
+      "extracted_value": "Left intertrochanteric hip fracture Procedure: Left hemiarthroplasty Orthopedist: Dr. Cal Seeyum Oth",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'diagnosis' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_3a2af0dfd151",
+      "field_name": "diagnosis",
+      "extracted_value": "Post-op atrial fibrillation Congestive heart failure \u2013 EF of 40% on echo May 2049 Coronary artery di",
+      "existing_value": "",
+      "conflict_type": "low_confidence",
+      "severity": "medium",
+      "message": "Field 'diagnosis' has low extraction confidence (0.47)",
+      "recommendation": "Verify this value manually during review."
+    },
+    {
+      "conflict_id": "cfl_07d60f26df82",
+      "field_name": "diagnosis",
+      "extracted_value": "Left-sided systolic congestive heart failure EF of 35% on echo performed 3 months ago Other diagnose vs Left intertrochanteric hip fracture Procedure: Left hemiarthroplasty Orthopedist: Dr. Cal Seeyum Oth vs Post-op atrial fibrillation Congestive heart failure \u2013 EF of 40% on echo May 2049 Coronary artery di",
+      "existing_value": "",
+      "conflict_type": "contradictory_value",
+      "severity": "high",
+      "message": "Multiple different values for 'diagnosis': Left-sided systolic congestive heart failure EF of 35% on echo performed 3 months ago Other diagnose, Left intertrochanteric hip fracture Procedure: Left hemiarthroplasty Orthopedist: Dr. Cal Seeyum Oth, Post-op atrial fibrillation Congestive heart failure \u2013 EF of 40% on echo May 2049 Coronary artery di",
+      "recommendation": "Verify which value is correct."
+    },
+    {
+      "conflict_id": "cfl_5467a8fd29a2",
+      "field_name": "patient_name",
+      "extracted_value": "John Doe Medical Record",
+      "existing_value": "Test Patient",
+      "conflict_type": "demographic_mismatch",
+      "severity": "high",
+      "message": "Name mismatch: extracted 'John Doe Medical Record' vs existing 'Test Patient'",
+      "recommendation": "Verify patient identity. Document may belong to a different patient."
+    },
+    {
+      "conflict_id": "cfl_159580bf6f07",
+      "field_name": "metformin",
+      "extracted_value": "Metformin 1000 mg",
+      "existing_value": "metformin 500mg",
+      "conflict_type": "duplicate_medication",
+      "severity": "medium",
+      "message": "Medication 'metformin' already in record with different dosage: 500mg vs 1000 mg",
+      "recommendation": "Verify if dosage change is intended or an error."
+    }
+  ],
+  "processing_errors": [],
+  "full_text_length": 8325
+}
