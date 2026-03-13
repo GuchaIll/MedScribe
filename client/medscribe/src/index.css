@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    @apply h-screen overflow-hidden overscroll-none;
+    margin: 0;
+    padding: 0;
+  }
+  
+  #root {
+    @apply h-screen overflow-hidden;
+  }
+}
+
+
+
