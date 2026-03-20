@@ -1,14 +1,12 @@
 import { useState } from "react";
 import Avatar from "../ui/Avatar";
 import AgentCard from "./AgentCard";
-import PipelineSteps from "./PipelineSteps";
 
 /* ─── Bubble ─────────────────────────────────────────────────────────────── */
 function Bubble({ msg, visible, onApprove, onSwitchTab }) {
   const isDoc = msg.speaker.role === "Physician";
   const isAgent = msg.speaker.role === "Agent";
   const [hov, setHov] = useState(false);
-  const [expanded, setExpanded] = useState(false);
 
   if (isAgent)
     return (
@@ -109,34 +107,6 @@ function Bubble({ msg, visible, onApprove, onSwitchTab }) {
           >
             {msg.text}
           </p>
-
-          {msg.pipeline && msg.pipeline.length > 0 && (
-            <>
-              <div
-                onClick={() => setExpanded((e) => !e)}
-                style={{
-                  marginTop: 8,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: "#b0b0bc",
-                    fontFamily: "'DM Mono', monospace",
-                    fontStyle: "italic",
-                  }}
-                >
-                  {expanded ? "▾ hide reasoning" : "▸ agent reasoning"}
-                </span>
-              </div>
-              {expanded && <PipelineSteps steps={msg.pipeline} />}
-            </>
-          )}
         </div>
       </div>
     </div>

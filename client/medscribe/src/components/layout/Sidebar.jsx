@@ -1,9 +1,9 @@
 import GlassPanel from "../ui/GlassPanel";
 import Avatar from "../ui/Avatar";
 import PipelineStepsSidebar from "../sidebar/PipelineStepsSidebar";
-import { PHYSICIAN, PATIENT, PIPELINE_STEPS } from "../../constants";
+import { PHYSICIAN, PATIENT } from "../../constants";
 
-export default function Sidebar({ sessionActive, pipelineStep, transcribing, timer }) {
+export default function Sidebar({ sessionActive, pipelineNodes, pipelineRunning, timer }) {
   return (
     <GlassPanel
       style={{
@@ -13,19 +13,8 @@ export default function Sidebar({ sessionActive, pipelineStep, transcribing, tim
         flexDirection: "column",
         padding: "20px 12px",
         gap: 3,
-        zIndex: 10,
-        borderTop: "none",
-        borderBottom: "none",
-        borderLeft: "none",
-        borderRadius: 0,
-        boxShadow:
-          "6px 0 40px rgba(0,0,0,0.4), 1px 0 0 rgba(255,255,255,0.05)",
-        background:
-          "linear-gradient(to right, rgba(61,61,61,0.85) 0%, rgba(61,61,61,0.72) 55%, rgba(255,255,255,1.0) 100%)",
-        WebkitMaskImage:
-          "linear-gradient(to right, black 0%, black 55%, transparent 100%)",
-        maskImage:
-          "linear-gradient(to right, black 0%, black 55%, transparent 100%)",
+        zIndex: 30,
+        borderRadius: "0 14px 14px 0",
       }}
     >
       <span
@@ -34,7 +23,7 @@ export default function Sidebar({ sessionActive, pipelineStep, transcribing, tim
           fontWeight: 700,
           letterSpacing: "0.14em",
           textTransform: "uppercase",
-          color: "rgba(255,255,255,0.2)",
+          color: "rgba(255,255,255,0.45)",
           fontFamily: "'DM Mono', monospace",
           padding: "0 8px",
           marginBottom: 6,
@@ -69,8 +58,8 @@ export default function Sidebar({ sessionActive, pipelineStep, transcribing, tim
                 letterSpacing: "0.1em",
                 textTransform: "uppercase",
                 color: online
-                  ? "rgba(120,195,255,0.6)"
-                  : "rgba(255,255,255,0.22)",
+                  ? "rgba(120,195,255,0.7)"
+                  : "rgba(255,255,255,0.42)",
                 fontFamily: "'DM Mono', monospace",
                 marginBottom: 2,
               }}
@@ -93,15 +82,14 @@ export default function Sidebar({ sessionActive, pipelineStep, transcribing, tim
       <div
         style={{
           height: 1,
-          background: "rgba(255,255,255,0.06)",
+          background: "rgba(255,255,255,0.1)",
           margin: "8px 4px",
         }}
       />
 
       <PipelineStepsSidebar
-        steps={PIPELINE_STEPS}
-        currentStep={pipelineStep}
-        active={transcribing}
+        pipelineNodes={pipelineNodes}
+        pipelineRunning={pipelineRunning}
       />
 
       <div style={{ marginTop: "auto" }}>
@@ -119,7 +107,7 @@ export default function Sidebar({ sessionActive, pipelineStep, transcribing, tim
               fontWeight: 700,
               letterSpacing: "0.13em",
               textTransform: "uppercase",
-              color: "rgba(255,255,255,0.2)",
+              color: "rgba(255,255,255,0.45)",
               fontFamily: "'DM Mono', monospace",
               marginBottom: 5,
             }}
@@ -144,7 +132,7 @@ export default function Sidebar({ sessionActive, pipelineStep, transcribing, tim
               fontSize: 11,
               fontWeight: 600,
               color: timer.running
-                ? "rgba(255,255,255,0.22)"
+                ? "rgba(255,255,255,0.42)"
                 : "rgba(120,195,255,0.7)",
               background: "none",
               border: "none",
@@ -154,7 +142,7 @@ export default function Sidebar({ sessionActive, pipelineStep, transcribing, tim
               transition: "color 0.2s",
             }}
           >
-            {timer.running ? "⏸ Pause" : "▶ Resume"}
+            {timer.running ? "Pause" : "Resume"}
           </button>
         </GlassPanel>
       </div>

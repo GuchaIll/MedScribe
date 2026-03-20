@@ -1,10 +1,39 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DOC_TABS, EMPTY_DOCUMENTS } from "../../constants";
+import DocumentViewPanel from "../upload/DocumentViewPanel";
+import PatientProfilePanel from "./PatientProfilePanel";
 
 /* ─── Patient Info Panel ─────────────────────────────────────────────────── */
-function PatientInfoPanel({ documents, uploadedFiles, onExport }) {
+function PatientInfoPanel({ documents, uploadedFiles, onExport, structuredRecord, onSaveRecord, sessionActive, lastUpdated, pendingDocSelect, onDocSelected }) {
   const [docTab, setDocTab] = useState("Session Summary");
+  const [selectedDoc, setSelectedDoc] = useState(null);
   const doc = documents[docTab] || EMPTY_DOCUMENTS[docTab];
+
+  // Auto-select the latest uploaded document when navigating from "View Documents" button
+  useEffect(() => {
+    if (pendingDocSelect) {
+      setDocTab("Uploaded Docs");
+      const files = documents["Uploaded Docs"]?.files;
+      if (files && files.length > 0) {
+        setSelectedDoc(files[files.length - 1]);
+      }
+      onDocSelected && onDocSelected();
+    }
+  }, [pendingDocSelect, documents, onDocSelected]);
+
+  // When a document entry is clicked, show the split-pane viewer
+  if (selectedDoc) {
+    return (
+      <div style={{ height: "100%", overflow: "hidden" }}>
+        <DocumentViewPanel
+          doc={selectedDoc}
+          structuredRecord={structuredRecord}
+          onBack={() => setSelectedDoc(null)}
+          onSave={onSaveRecord}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -192,7 +221,8 @@ function PatientInfoPanel({ documents, uploadedFiles, onExport }) {
 
         {/* Empty state */}
         {(!doc.sections || doc.sections.length === 0) &&
-          docTab !== "Uploaded Docs" && (
+          docTab !== "Uploaded Docs" &&
+          docTab !== "Medical Record" && (
             <div
               style={{
                 textAlign: "center",
@@ -235,6 +265,7 @@ function PatientInfoPanel({ documents, uploadedFiles, onExport }) {
             ].map((f, i) => (
               <div
                 key={i}
+                onClick={() => f.status !== "Uploading" && setSelectedDoc(f)}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -245,15 +276,17 @@ function PatientInfoPanel({ documents, uploadedFiles, onExport }) {
                   background: "#fafafa",
                   opacity: 0,
                   animation: `fadeUp 0.35s ease ${i * 0.06}s forwards`,
-                  transition: "box-shadow 0.18s",
+                  transition: "box-shadow 0.18s, background 0.15s",
+                  cursor: f.status !== "Uploading" ? "pointer" : "default",
                 }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.boxShadow =
-                    "0 4px 16px rgba(0,0,0,0.08)")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.boxShadow = "none")
-                }
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.08)";
+                  if (f.status !== "Uploading") e.currentTarget.style.background = "#f0f4ff";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = "none";
+                  e.currentTarget.style.background = "#fafafa";
+                }}
               >
                 <div
                   style={{
@@ -298,7 +331,15 @@ function PatientInfoPanel({ documents, uploadedFiles, onExport }) {
                         fontFamily: "'DM Mono', monospace",
                       }}
                     >
-                      {f.date} · {f.size}
+                      {f.documentType
+                        ? `${f.documentType} · `
+                        : ""}{f.date} · {f.size}
+                      {f.confidence != null && f.status !== "Uploading"
+                        ? ` · ${f.confidence}% confidence`
+                        : ""}
+                      {f.fieldsExtracted > 0
+                        ? ` · ${f.fieldsExtracted} fields`
+                        : ""}
                     </div>
                   </div>
                 </div>
@@ -316,22 +357,39 @@ function PatientInfoPanel({ documents, uploadedFiles, onExport }) {
                       padding: "3px 8px",
                       borderRadius: 4,
                       background:
-                        f.status === "Reviewed"
+                        f.status === "Reviewed" || f.status === "Processed"
                           ? "rgba(34,197,94,0.1)"
                           : f.status === "Uploading"
                           ? "rgba(59,130,246,0.1)"
+                          : f.status === "Conflicts"
+                          ? "rgba(239,68,68,0.1)"
                           : "rgba(234,179,8,0.1)",
                       color:
-                        f.status === "Reviewed"
+                        f.status === "Reviewed" || f.status === "Processed"
                           ? "#16a34a"
                           : f.status === "Uploading"
                           ? "#2563eb"
+                          : f.status === "Conflicts"
+                          ? "#dc2626"
                           : "#a16207",
                       fontFamily: "'DM Mono', monospace",
                     }}
                   >
                     {f.status}
                   </span>
+                  {f.status !== "Uploading" && (
+                    <span
+                      style={{
+                        fontSize: 16,
+                        color: "#bbb",
+                        lineHeight: 1,
+                        userSelect: "none",
+                      }}
+                      title="Click to view document and consolidated record"
+                    >
+                      →
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
@@ -355,6 +413,15 @@ function PatientInfoPanel({ documents, uploadedFiles, onExport }) {
                 </div>
               )}
           </div>
+        )}
+
+        {/* Medical Record Profile */}
+        {docTab === "Medical Record" && (
+          <PatientProfilePanel
+            structuredRecord={structuredRecord}
+            sessionActive={sessionActive}
+            lastUpdated={lastUpdated}
+          />
         )}
       </div>
     </div>

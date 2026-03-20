@@ -1,5 +1,140 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { CHANGE_COLORS } from "../../constants";
+
+// Tracks greeting message IDs whose animation has already completed.
+// Module-level so it survives tab switches (component unmount/remount).
+const _greetingsDone = new Set();
+
+/* ─── Streaming line-by-line greeting renderer ───────────────────────────── */
+function StreamingGreeting({ text, id }) {
+  const lines = text.split("\n");
+  const alreadyDone = id != null && _greetingsDone.has(id);
+  const [visibleCount, setVisibleCount] = useState(alreadyDone ? lines.length : 0);
+  const [showTip, setShowTip] = useState(alreadyDone);
+  const bottomRef = useRef(null);
+  const done = visibleCount >= lines.length;
+
+  useEffect(() => {
+    if (done) {
+      if (id != null) _greetingsDone.add(id);
+      const t = setTimeout(() => setShowTip(true), 500);
+      return () => clearTimeout(t);
+    }
+    const line = lines[visibleCount];
+    const isEmpty = !line?.trim();
+    // Empty lines render near-instantly, bullets slightly slower for readability
+    const delay = isEmpty ? 110 : line?.trim().startsWith("•") ? 420 : 340;
+    const t = setTimeout(() => setVisibleCount((v) => v + 1), delay);
+    return () => clearTimeout(t);
+  }, [visibleCount, done, lines, id]);
+
+  // Gently scroll the bottom sentinel into view as new content appears
+  useEffect(() => {
+    if (visibleCount > 0 && bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [visibleCount, showTip]);
+
+  const renderLine = (line, i) => {
+    if (line.trim().startsWith("•")) {
+      const bulletContent = line.trim().slice(1).trim();
+      const boldMatch = bulletContent.match(/^\*\*(.+?)\*\*\s*—\s*(.+)$/);
+      if (boldMatch) {
+        return (
+          <div
+            key={i}
+            style={{
+              display: "flex",
+              gap: 8,
+              paddingLeft: 4,
+              marginBottom: 8,
+              animation: "fadeUp 0.32s ease forwards",
+            }}
+          >
+            <span style={{ color: "#667eea", fontWeight: 700, flexShrink: 0 }}>•</span>
+            <span>
+              <strong style={{ color: "#1f2937", fontWeight: 600 }}>{boldMatch[1]}</strong>
+              <span style={{ color: "#6b7280" }}> — {boldMatch[2]}</span>
+            </span>
+          </div>
+        );
+      }
+      return (
+        <div
+          key={i}
+          style={{
+            display: "flex",
+            gap: 8,
+            paddingLeft: 4,
+            marginBottom: 8,
+            animation: "fadeUp 0.32s ease forwards",
+          }}
+        >
+          <span style={{ color: "#667eea", fontWeight: 700, flexShrink: 0 }}>•</span>
+          <span>{bulletContent}</span>
+        </div>
+      );
+    }
+    if (!line.trim()) {
+      return <div key={i} style={{ height: 10 }} />;
+    }
+    return (
+      <p
+        key={i}
+        style={{ margin: "0 0 6px", animation: "fadeUp 0.32s ease forwards" }}
+      >
+        {line}
+      </p>
+    );
+  };
+
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 13,
+          lineHeight: 1.75,
+          color: "#374151",
+          fontFamily: "'Lora', Georgia, serif",
+        }}
+      >
+        {lines.slice(0, visibleCount).map((line, i) => renderLine(line, i))}
+      </div>
+      {showTip && (
+        <div
+          style={{
+            marginTop: 14,
+            padding: "10px 14px",
+            borderRadius: 10,
+            background: "rgba(102,126,234,0.06)",
+            border: "1px solid rgba(102,126,234,0.15)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            animation: "fadeUp 0.4s ease forwards",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: "#667eea",
+              fontFamily: "'DM Mono', monospace",
+            }}
+          >
+            i
+          </span>
+          <span
+            style={{ fontSize: 11, color: "#4b5563", fontFamily: "'DM Sans', sans-serif" }}
+          >
+            Say <strong>"Assistant, [your question]"</strong> anytime to query the patient's medical history
+          </span>
+        </div>
+      )}
+      <div ref={bottomRef} />
+    </div>
+  );
+}
 
 /* ─── Agent message card (session summary / record review) ───────────────── */
 function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
@@ -23,17 +158,20 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
           height: 36,
           borderRadius: "50%",
           flexShrink: 0,
-          background:
-            "linear-gradient(135deg, #c7d2fe 0%, #ddd6fe 50%, #e9d5ff 100%)",
-          border: "2px solid #a5b4fc",
+          background: "#1a1a1a",
+          border: "2px solid #444",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 17,
-          boxShadow: "0 2px 8px rgba(139,92,246,0.18)",
+          fontSize: 11,
+          fontWeight: 800,
+          color: "#f0f0f0",
+          fontFamily: "'DM Mono', monospace",
+          letterSpacing: "0.05em",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
         }}
       >
-        🤖
+        AI
       </div>
 
       <div
@@ -50,7 +188,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
             style={{
               fontSize: 11,
               fontWeight: 700,
-              color: "#6d28d9",
+              color: "#374151",
               letterSpacing: "-0.01em",
             }}
           >
@@ -61,8 +199,8 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
               fontSize: 9,
               padding: "1px 6px",
               borderRadius: 4,
-              background: "#ede9fe",
-              color: "#7c3aed",
+              background: "#e5e7eb",
+              color: "#374151",
               fontWeight: 700,
               fontFamily: "'DM Mono', monospace",
               letterSpacing: "0.06em",
@@ -81,16 +219,15 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
           </span>
         </div>
 
-        {/* Card body — pastel lavender background */}
+        {/* Card body — clean white background */}
         <div
           style={{
             padding: "18px 22px",
             borderRadius: "4px 18px 18px 18px",
-            background:
-              "linear-gradient(135deg, #f0ecff 0%, #e8f4fd 50%, #fdf2f8 100%)",
-            border: "1px solid #c7d2fe",
+            background: "#ffffff",
+            border: "1px solid #e5e7eb",
             boxShadow:
-              "0 3px 16px rgba(139,92,246,0.10), 0 1px 3px rgba(139,92,246,0.06), inset 0 1px 0 rgba(255,255,255,0.95)",
+              "0 3px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.95)",
           }}
         >
           {/* ── Summary card ── */}
@@ -109,18 +246,21 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                     width: 28,
                     height: 28,
                     borderRadius: 8,
-                    background: "linear-gradient(135deg, #a78bfa, #818cf8)",
+                    background: "#374151",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: 14,
-                    boxShadow: "0 2px 6px rgba(139,92,246,0.2)",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: "#fff",
+                    fontFamily: "'DM Mono', monospace",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
                   }}
                 >
-                  📋
+                  S
                 </div>
                 <span
-                  style={{ fontSize: 14, fontWeight: 700, color: "#1e1b4b" }}
+                  style={{ fontSize: 14, fontWeight: 700, color: "#1f2937" }}
                 >
                   Session Complete
                 </span>
@@ -143,7 +283,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                         padding: "8px 14px",
                         borderRadius: 10,
                         background: "rgba(255,255,255,0.7)",
-                        border: "1px solid rgba(139,92,246,0.12)",
+                        border: "1px solid rgba(0,0,0,0.08)",
                         minWidth: 70,
                         textAlign: "center",
                       }}
@@ -152,7 +292,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                         style={{
                           fontSize: 18,
                           fontWeight: 800,
-                          color: "#4c1d95",
+                          color: "#1f2937",
                           fontFamily: "'DM Mono', monospace",
                         }}
                       >
@@ -161,7 +301,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                       <div
                         style={{
                           fontSize: 9,
-                          color: "#7c3aed",
+                          color: "#6b7280",
                           fontFamily: "'DM Mono', monospace",
                           textTransform: "uppercase",
                           letterSpacing: "0.08em",
@@ -204,10 +344,10 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                     >
                       <span style={{ fontSize: 12 }}>
                         {alert.level === "critical" || alert.level === "high"
-                          ? "⚠️"
+                          ? "!"
                           : alert.level === "moderate"
-                          ? "⚡"
-                          : "✓"}
+                          ? "*"
+                          : "-"}
                       </span>
                       <span
                         style={{
@@ -237,7 +377,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                     padding: "12px 14px",
                     borderRadius: 10,
                     background: "rgba(255,255,255,0.6)",
-                    border: "1px solid rgba(139,92,246,0.08)",
+                    border: "1px solid rgba(0,0,0,0.06)",
                   }}
                   dangerouslySetInnerHTML={{ __html: msg.summaryHtml }}
                 />
@@ -268,7 +408,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                     padding: "8px 18px",
                     borderRadius: 99,
                     background:
-                      "linear-gradient(135deg, #818cf8, #6d28d9)",
+                      "#1a1a1a",
                     border: "none",
                     color: "#fff",
                     fontSize: 12,
@@ -276,20 +416,20 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                     cursor: "pointer",
                     fontFamily: "inherit",
                     transition: "all 0.18s",
-                    boxShadow: "0 2px 8px rgba(109,40,217,0.25)",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = "translateY(-1px)";
                     e.currentTarget.style.boxShadow =
-                      "0 4px 14px rgba(109,40,217,0.35)";
+                      "0 4px 14px rgba(0,0,0,0.3)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.transform = "translateY(0)";
                     e.currentTarget.style.boxShadow =
-                      "0 2px 8px rgba(109,40,217,0.25)";
+                      "0 2px 8px rgba(0,0,0,0.2)";
                   }}
                 >
-                  📄 View Discharge Note
+                  View Discharge Note
                 </button>
               </div>
             </div>
@@ -312,21 +452,24 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                     height: 28,
                     borderRadius: 8,
                     background:
-                      "linear-gradient(135deg, #fbbf24, #f59e0b)",
+                      "#374151",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: 14,
-                    boxShadow: "0 2px 6px rgba(245,158,11,0.2)",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: "#fff",
+                    fontFamily: "'DM Mono', monospace",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
                   }}
                 >
-                  🔍
+                  R
                 </div>
                 <span
                   style={{
                     fontSize: 14,
                     fontWeight: 700,
-                    color: "#1e1b4b",
+                    color: "#1f2937",
                   }}
                 >
                   Review Patient Record Changes
@@ -355,7 +498,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                   padding: "8px 12px",
                   borderRadius: 8,
                   background: "rgba(255,255,255,0.5)",
-                  border: "1px solid rgba(139,92,246,0.08)",
+                  border: "1px solid rgba(0,0,0,0.06)",
                 }}
               >
                 {["ok", "warning", "conflict", "unchanged"].map((k) => (
@@ -470,7 +613,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                           style={{
                             fontSize: 13,
                             lineHeight: 1.65,
-                            color: "#1e1b4b",
+                            color: "#1f2937",
                             margin: 0,
                             fontFamily: "'Lora', Georgia, serif",
                             whiteSpace: "pre-line",
@@ -482,13 +625,13 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                           <p
                             style={{
                               fontSize: 11,
-                              color: "#7c3aed",
+                              color: "#6b7280",
                               margin: "4px 0 0",
                               fontFamily: "'DM Sans', sans-serif",
                               fontStyle: "italic",
                             }}
                           >
-                            ℹ {f.reason}
+                            {f.reason}
                           </p>
                         )}
                       </div>
@@ -538,8 +681,8 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                     padding: "11px 16px",
                     borderRadius: 12,
                     background:
-                      "linear-gradient(135deg, rgba(34,197,94,0.12), rgba(16,185,129,0.08))",
-                    border: "1px solid rgba(34,197,94,0.25)",
+                      "rgba(34,197,94,0.08)",
+                    border: "1px solid rgba(34,197,94,0.2)",
                     textAlign: "center",
                   }}
                 >
@@ -551,7 +694,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                       fontFamily: "'DM Sans', sans-serif",
                     }}
                   >
-                    ✓ Changes Approved — Record Updated
+                    ✓ Changes Approved
                   </span>
                 </div>
               )}
@@ -574,18 +717,21 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                     width: 28,
                     height: 28,
                     borderRadius: 8,
-                    background: "linear-gradient(135deg, #60a5fa, #3b82f6)",
+                    background: "#374151",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: 14,
-                    boxShadow: "0 2px 6px rgba(59,130,246,0.2)",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: "#fff",
+                    fontFamily: "'DM Mono', monospace",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
                   }}
                 >
-                  📄
+                  D
                 </div>
                 <span
-                  style={{ fontSize: 14, fontWeight: 700, color: "#1e1b4b" }}
+                  style={{ fontSize: 14, fontWeight: 700, color: "#1f2937" }}
                 >
                   Document Analyzed
                 </span>
@@ -595,8 +741,8 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                       fontSize: 9,
                       padding: "2px 7px",
                       borderRadius: 4,
-                      background: "rgba(59,130,246,0.12)",
-                      color: "#2563eb",
+                      background: "rgba(59,130,246,0.10)",
+                      color: "#374151",
                       fontWeight: 700,
                       fontFamily: "'DM Mono', monospace",
                       textTransform: "uppercase",
@@ -625,7 +771,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                         padding: "8px 14px",
                         borderRadius: 10,
                         background: "rgba(255,255,255,0.7)",
-                        border: "1px solid rgba(59,130,246,0.12)",
+                        border: "1px solid rgba(0,0,0,0.08)",
                         minWidth: 70,
                         textAlign: "center",
                       }}
@@ -634,7 +780,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                         style={{
                           fontSize: 18,
                           fontWeight: 800,
-                          color: "#1e40af",
+                          color: "#1f2937",
                           fontFamily: "'DM Mono', monospace",
                         }}
                       >
@@ -643,7 +789,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                       <div
                         style={{
                           fontSize: 9,
-                          color: "#3b82f6",
+                          color: "#6b7280",
                           fontFamily: "'DM Mono', monospace",
                           textTransform: "uppercase",
                           letterSpacing: "0.08em",
@@ -669,7 +815,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                     padding: "12px 14px",
                     borderRadius: 10,
                     background: "rgba(255,255,255,0.6)",
-                    border: "1px solid rgba(59,130,246,0.08)",
+                    border: "1px solid rgba(0,0,0,0.06)",
                     whiteSpace: "pre-line",
                   }}
                 >
@@ -764,22 +910,36 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                                 fontFamily: "'DM Mono', monospace",
                               }}
                             >
-                              {Math.round(fc.confidence * 100)}%
+                              {Math.round(fc.confidence > 1 ? fc.confidence : fc.confidence * 100)}%
                             </span>
                           </div>
                           <p
                             style={{
                               fontSize: 12,
                               lineHeight: 1.5,
-                              color: "#1e1b4b",
+                              color: "#1f2937",
                               margin: 0,
                               fontFamily: "'Lora', Georgia, serif",
                               wordBreak: "break-word",
                             }}
                           >
-                            {fc.value.length > 120
-                              ? fc.value.slice(0, 120) + "…"
-                              : fc.value}
+                            {(() => {
+                              const v = fc.value;
+                              if (v == null) return "";
+                              if (typeof v === "string")
+                                return v.length > 120 ? v.slice(0, 120) + "…" : v;
+                              if (typeof v === "number" || typeof v === "boolean")
+                                return String(v);
+                              if (Array.isArray(v))
+                                return v.map((item) =>
+                                  typeof item === "object" && item !== null
+                                    ? Object.entries(item).filter(([, val]) => val != null && val !== "" && val !== "None").map(([k, val]) => `${k}: ${val}`).join(", ")
+                                    : String(item)
+                                ).join(" | ");
+                              if (typeof v === "object")
+                                return Object.entries(v).filter(([, val]) => val != null && val !== "" && val !== "None").map(([k, val]) => `${k}: ${val}`).join(", ");
+                              return String(v);
+                            })()}
                           </p>
                         </div>
                       );
@@ -826,8 +986,8 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                     >
                       <span style={{ fontSize: 12, flexShrink: 0 }}>
                         {cd.severity === "critical" || cd.severity === "high"
-                          ? "⚠️"
-                          : "⚡"}
+                          ? "!"
+                          : "*"}
                       </span>
                       <div>
                         <span
@@ -870,7 +1030,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                     padding: "8px 18px",
                     borderRadius: 99,
                     background:
-                      "linear-gradient(135deg, #60a5fa, #3b82f6)",
+                      "#1a1a1a",
                     border: "none",
                     color: "#fff",
                     fontSize: 12,
@@ -878,22 +1038,123 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                     cursor: "pointer",
                     fontFamily: "inherit",
                     transition: "all 0.18s",
-                    boxShadow: "0 2px 8px rgba(59,130,246,0.25)",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = "translateY(-1px)";
                     e.currentTarget.style.boxShadow =
-                      "0 4px 14px rgba(59,130,246,0.35)";
+                      "0 4px 14px rgba(0,0,0,0.3)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.transform = "translateY(0)";
                     e.currentTarget.style.boxShadow =
-                      "0 2px 8px rgba(59,130,246,0.25)";
+                      "0 2px 8px rgba(0,0,0,0.2)";
                   }}
                 >
-                  📂 View Documents
+                  View Documents
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* ── Greeting card ── */}
+          {msg.cardType === "greeting" && (
+            <StreamingGreeting text={msg.text} id={msg.id} />
+          )}
+
+          {/* ── Processing card ── */}
+          {msg.cardType === "processing" && (
+            <div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  marginBottom: 12,
+                }}
+              >
+                <div
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
+                    background: "#3b82f6",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: "#fff",
+                    boxShadow: "0 2px 6px rgba(59,130,246,0.35)",
+                    animation: "pulse 2s infinite",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  DOC
+                </div>
+                <span
+                  style={{ fontSize: 14, fontWeight: 700, color: "#1f2937" }}
+                >
+                  Processing Document
+                </span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    padding: "2px 8px",
+                    borderRadius: 99,
+                    background: "rgba(59,130,246,0.1)",
+                    color: "#2563eb",
+                    fontWeight: 600,
+                    fontFamily: "'DM Mono', monospace",
+                    animation: "pulse 2s infinite",
+                  }}
+                >
+                  IN PROGRESS
+                </span>
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  lineHeight: 1.72,
+                  color: "#374151",
+                  fontFamily: "'Lora', Georgia, serif",
+                }}
+              >
+                {msg.text.split("\n").map((line, i) => {
+                  if (line.trim().startsWith("•")) {
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          paddingLeft: 4,
+                          marginBottom: 6,
+                        }}
+                      >
+                        <span style={{ color: "#3b82f6", fontWeight: 700 }}>•</span>
+                        <span>{line.trim().slice(1).trim()}</span>
+                      </div>
+                    );
+                  }
+                  if (!line.trim()) {
+                    return <div key={i} style={{ height: 10 }} />;
+                  }
+                  return (
+                    <p key={i} style={{ margin: "0 0 6px" }}>
+                      {line}
+                    </p>
+                  );
+                })}
+              </div>
+              <style>
+                {`
+                  @keyframes pulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.6; }
+                  }
+                `}
+              </style>
             </div>
           )}
 
@@ -905,19 +1166,22 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                   width: 24,
                   height: 24,
                   borderRadius: 8,
-                  background: "linear-gradient(135deg, #a78bfa, #818cf8)",
+                  background: "#4b5563",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 13,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  color: "#fff",
+                  fontFamily: "'DM Mono', monospace",
                 }}
               >
-                🔍
+                ...
               </div>
               <span
                 style={{
                   fontSize: 13,
-                  color: "#6d28d9",
+                  color: "#374151",
                   fontFamily: "'DM Sans', sans-serif",
                   fontStyle: "italic",
                 }}
@@ -945,18 +1209,21 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                     width: 28,
                     height: 28,
                     borderRadius: 8,
-                    background: "linear-gradient(135deg, #a78bfa, #6d28d9)",
+                    background: "#374151",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: 14,
-                    boxShadow: "0 2px 6px rgba(109,40,217,0.2)",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: "#fff",
+                    fontFamily: "'DM Mono', monospace",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
                   }}
                 >
-                  💬
+                  Q
                 </div>
                 <span
-                  style={{ fontSize: 14, fontWeight: 700, color: "#1e1b4b" }}
+                  style={{ fontSize: 14, fontWeight: 700, color: "#1f2937" }}
                 >
                   Assistant Response
                 </span>
@@ -975,7 +1242,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                       border: "1px solid rgba(234,179,8,0.28)",
                     }}
                   >
-                    Confidence: {Math.round(msg.confidence * 100)}%
+                    Confidence: {Math.round(msg.confidence > 1 ? msg.confidence : msg.confidence * 100)}%
                   </span>
                 )}
               </div>
@@ -1001,7 +1268,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                 style={{
                   fontSize: 13,
                   lineHeight: 1.72,
-                  color: msg.confidence === 0 ? "#9ca3af" : "#1e1b4b",
+                  color: msg.confidence === 0 ? "#9ca3af" : "#1f2937",
                   margin: "0 0 10px",
                   fontFamily: "'Lora', Georgia, serif",
                   padding: "12px 14px",
@@ -1013,7 +1280,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                   border:
                     msg.confidence === 0
                       ? "1px solid rgba(156,163,175,0.18)"
-                      : "1px solid rgba(139,92,246,0.08)",
+                      : "1px solid rgba(0,0,0,0.06)",
                   whiteSpace: "pre-line",
                 }}
               >
@@ -1036,7 +1303,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                     border: "1px solid rgba(234,179,8,0.2)",
                   }}
                 >
-                  ⚠ {msg.disclaimer}
+                  {msg.disclaimer}
                 </p>
               )}
 
@@ -1057,7 +1324,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                     <span
                       style={{
                         fontSize: 10,
-                        color: "#7c3aed",
+                        color: "#374151",
                         fontFamily: "'DM Mono', monospace",
                         fontStyle: "italic",
                       }}
@@ -1083,7 +1350,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                             marginBottom: 4,
                             borderRadius: 7,
                             background: "rgba(255,255,255,0.55)",
-                            border: "1px solid rgba(139,92,246,0.10)",
+                            border: "1px solid rgba(0,0,0,0.08)",
                           }}
                         >
                           <div
@@ -1100,7 +1367,7 @@ function AgentCard({ msg, visible, onApprove, onSwitchTab }) {
                                 fontWeight: 700,
                                 textTransform: "uppercase",
                                 letterSpacing: "0.08em",
-                                color: "#6d28d9",
+                                color: "#374151",
                                 fontFamily: "'DM Mono', monospace",
                               }}
                             >

@@ -32,38 +32,40 @@ export default function AppHeader({
             onClick={onStartSession}
             className="ib"
             style={{
-              padding: "5px 14px",
+              padding: "6px 18px",
               borderRadius: 99,
-              border: "1px solid rgba(34,197,94,0.3)",
-              background: "rgba(34,197,94,0.1)",
+              border: "1px solid rgba(0,0,0,0.12)",
+              background: "#f0f0f0",
               cursor: "pointer",
-              color: "#22c55e",
+              color: "#1a1a1a",
               fontSize: 12,
-              fontWeight: 600,
+              fontWeight: 700,
               fontFamily: "inherit",
               transition: "all 0.18s",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
             }}
           >
-            ▶ Start Session
+            Start Session
           </button>
         ) : (
           <button
             onClick={onEndSession}
             className="ib"
             style={{
-              padding: "5px 14px",
+              padding: "6px 18px",
               borderRadius: 99,
-              border: "1px solid rgba(239,68,68,0.3)",
-              background: "rgba(239,68,68,0.1)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              background: "#1a1a1a",
               cursor: "pointer",
-              color: "#ef4444",
+              color: "#f0f0f0",
               fontSize: 12,
-              fontWeight: 600,
+              fontWeight: 700,
               fontFamily: "inherit",
               transition: "all 0.18s",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
             }}
           >
-            ■ End Session
+            End Session
           </button>
         )}
         <span
