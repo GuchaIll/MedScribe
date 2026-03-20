@@ -135,6 +135,15 @@ def _check_low_confidence(
     return conflicts
 
 
+# Field types that are inherently multi-valued — multiple entries are valid by design
+# and should never be flagged as contradictory internal duplicates.
+_LIST_FIELD_NAMES: frozenset = frozenset({
+    "lab_result", "medication", "allergy", "chronic_condition",
+    "hpi_event", "family_history", "procedure", "problem",
+    "risk_factor", "surgery", "hospitalization",
+})
+
+
 def _check_internal_duplicates(
     fields: List[ExtractedField],
 ) -> List[ConflictItem]:
@@ -143,6 +152,9 @@ def _check_internal_duplicates(
     # Group by (category, field_name)
     groups: Dict[str, List[ExtractedField]] = {}
     for f in fields:
+        # Skip inherently multi-valued list fields — different entries are all valid
+        if f.field_name.lower() in _LIST_FIELD_NAMES:
+            continue
         key = f"{f.category.value}:{f.field_name.lower()}"
         groups.setdefault(key, []).append(f)
 
@@ -203,7 +215,7 @@ def _check_allergy_conflicts(
                     existing_value=f"Allergy: {allergen}",
                     conflict_type=ConflictType.ALLERGY_MEDICATION,
                     severity=ConflictSeverity.CRITICAL,
-                    message=f"⚠️ ALLERGY CONFLICT: {med.value} prescribed but patient is allergic to {allergen}",
+                    message=f"ALLERGY CONFLICT: {med.value} prescribed but patient is allergic to {allergen}",
                     source_document=med.source_document,
                     recommendation=f"Do NOT administer {med.value}. Consult alternatives.",
                 ))
@@ -218,7 +230,7 @@ def _check_allergy_conflicts(
                     existing_value=f"Allergy: {allergen} (cross-reactive)",
                     conflict_type=ConflictType.ALLERGY_MEDICATION,
                     severity=ConflictSeverity.CRITICAL,
-                    message=f"⚠️ CROSS-REACTIVITY: {med.value} may cross-react with {allergen} allergy",
+                    message=f"CROSS-REACTIVITY: {med.value} may cross-react with {allergen} allergy",
                     source_document=med.source_document,
                     recommendation=f"Patient is allergic to {allergen}. {med_name} has known cross-reactivity.",
                 ))

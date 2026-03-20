@@ -1,0 +1,76 @@
+# MedScribe — Docker Compose (Development)
+#
+# Starts all three services with hot-reload:
+#   db      — PostgreSQL 15 + pgvector
+#   api     — FastAPI backend (uvicorn --reload), runs migrations on startup
+#   client  — React dev server (npm start), proxies /api to the api service
+#
+# Prerequisites:
+#   1. Copy .env.example to .env in the project root and fill in your keys.
+#   2. Docker Desktop must be running.
+#
+# Usage:
+#   docker compose up          # start all services
+#   docker compose up --build  # rebuild images (after dependency changes)
+#   docker compose down        # stop and remove containers
+#   docker compose down -v     # also remove the database volume
+
+services:
+
+  db:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_DB: medscribe
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d medscribe"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    volumes:
+      # Mount source for hot-reload. node_modules / .venv are excluded via .dockerignore.
+      - ./server:/app
+    env_file:
+      # Loads GROQ_API_KEY, SECRET_KEY, ELEVENLABS_API_KEY, etc. from project root .env
+      - .env
+    environment:
+      # Override DATABASE_URL so it targets the db container, not localhost
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/medscribe
+      # Use the Groq API LLM — do not attempt to load local PyTorch models
+      LLM_MODEL: api
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  client:
+    build:
+      context: ./client/medscribe
+      dockerfile: Dockerfile.dev
+    volumes:
+      # Mount src and public for hot-reload; leave node_modules in the image
+      - ./client/medscribe/src:/app/src
+      - ./client/medscribe/public:/app/public
+    environment:
+      # Point the CRA dev-server proxy at the api service (see src/setupProxy.js)
+      REACT_APP_API_TARGET: http://api:3001
+      # Disable host check so the Docker host can reach the dev server
+      DANGEROUSLY_DISABLE_HOST_CHECK: "true"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  db_data:

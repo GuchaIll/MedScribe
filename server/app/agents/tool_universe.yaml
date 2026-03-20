@@ -1,0 +1,183 @@
+name: ToolUniverseAgent
+type: tool-caller
+tool: tooluniverse
+description: Invoke ToolUniverse medical tools to retrieve structured medical knowledge
+
+config:
+  base_url: "tooluniverse_endpoint"
+  timeout: 45
+  max_retries: 3
+
+tools_available:
+  - name: medical_drugs
+    description: Drug information lookup
+    categories:
+      - "Drug interactions"
+      - "Prescribing guidance"
+      - "Adverse reactions"
+      - "Contraindications"
+
+  - name: medical_symptoms
+    description: Symptom knowledge base
+    categories:
+      - "Symptom classification"
+      - "Pathological mechanisms"
+      - "Associated diseases"
+
+  - name: medical_diagnostics
+    description: Diagnostic criteria and clinical guidelines
+    categories:
+      - "Diagnostic criteria"
+      - "Clinical practice guidelines"
+      - "Workup recommendations"
+
+  - name: medical_procedures
+    description: Medical procedures and operations
+    categories:
+      - "Treatment options"
+      - "Surgical indications"
+      - "Procedural standards"
+
+  - name: lab_interpretation
+    description: Laboratory result interpretation
+    categories:
+      - "Reference ranges"
+      - "Critical values"
+      - "Clinical significance"
+      - "Trend analysis"
+
+  - name: dosage_calculation
+    description: Patient-specific dosage calculation
+    categories:
+      - "Weight-based dosing"
+      - "Renal adjustment"
+      - "Geriatric adjustment"
+      - "Pediatric dosing"
+
+prompt_template: |
+  ## Medical Tool Query Task
+
+  ### Query Context:
+  Based on the following diagnostic analysis, retrieve relevant professional medical information:
+  {{ diagnosis_analysis }}
+
+  ### Query Objective:
+  {% if query_type == "drug_info" %}
+  Look up drug-related information including:
+  - Common medications for this condition
+  - Drug-drug interactions
+  - Prescribing precautions
+  - Adverse reactions and side effects
+  {% elif query_type == "diagnostic_criteria" %}
+  Look up diagnostic standards including:
+  - Disease diagnostic criteria
+  - Relevant clinical practice guidelines
+  - Recommended workup and investigations
+  {% elif query_type == "treatment_options" %}
+  Look up treatment options including:
+  - Available therapies
+  - Procedural standards and indications
+  - Prognosis assessment
+  {% elif query_type == "lab_interpretation" %}
+  Interpret laboratory values including:
+  - Flag abnormal and critical results
+  - Provide clinical significance context
+  - Correlate with suspected diagnoses
+  {% elif query_type == "dosage_check" %}
+  Calculate and verify dosage appropriateness:
+  - Patient-parameter-based dose adjustments
+  - Renal/hepatic dosing modifications
+  - Pediatric or geriatric considerations
+  {% else %}
+  Look up comprehensive medical information including:
+  - Disease-related knowledge
+  - Treatment recommendations
+  - Preventive measures
+  {% endif %}
+
+  ### Query Parameters:
+  - Disease keywords: {{ disease_keywords }}
+  - Symptom keywords: {{ symptom_keywords }}
+  - Medical specialty: {{ medical_specialty }}
+
+inputs:
+  - name: diagnosis_analysis
+    type: string
+    description: Diagnostic analysis results from the reasoning node
+    required: true
+  - name: query_type
+    type: string
+    description: Query type (drug_info / diagnostic_criteria / treatment_options / lab_interpretation / dosage_check / comprehensive)
+    default: "comprehensive"
+  - name: disease_keywords
+    type: array
+    description: List of disease keywords
+    required: false
+  - name: symptom_keywords
+    type: array
+    description: List of symptom keywords
+    required: false
+  - name: medical_specialty
+    type: string
+    description: Medical specialty area
+    required: false
+  - name: patient_context
+    type: object
+    description: Patient demographics and parameters for dosage calculation (age, sex, weight_kg, renal_function)
+    required: false
+
+outputs:
+  - name: drug_information
+    type: object
+    description: Drug-related information (interactions, contraindications, adverse reactions)
+  - name: diagnostic_guidelines
+    type: object
+    description: Diagnostic guideline information and recommended workup
+  - name: treatment_recommendations
+    type: object
+    description: Treatment recommendations and therapy options
+  - name: lab_interpretations
+    type: object
+    description: Laboratory result interpretations with clinical significance
+  - name: dosage_recommendations
+    type: object
+    description: Patient-specific dosage recommendations and adjustments
+  - name: clinical_references
+    type: array
+    description: Clinical reference materials and evidence sources
+  - name: tool_query_summary
+    type: string
+    description: Summary of tool query results
+
+execution:
+  timeout: 45
+  retry_count: 3
+  error_handling: graceful
+  parallel_queries: true
+
+quality_assurance:
+  - evidence_based_check
+  - guideline_compliance_check
+  - source_reliability_check
+  - dosage_safety_check
+
+metadata:
+  version: "1.0"
+  medical_evidence_level: "Tool-enhanced knowledge retrieval"
+  supported_specialties:
+    - "Internal Medicine"
+    - "Surgery"
+    - "Neurology"
+    - "Cardiology"
+    - "Gastroenterology"
+    - "Pulmonology"
+    - "Endocrinology"
+    - "Hematology"
+    - "Oncology"
+    - "Rheumatology"
+    - "Nephrology"
+    - "Infectious Disease"
+    - "Psychiatry"
+    - "Emergency Medicine"
+    - "Pediatrics"
+    - "Obstetrics and Gynecology"

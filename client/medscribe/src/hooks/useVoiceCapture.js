@@ -1,34 +1,29 @@
-/**
- * useVoiceCapture — VAD-enhanced speech recognition hook.
+﻿/**
+ * useVoiceCapture â€” VAD-enhanced speech recognition hook.
  *
- * Combines @ricky0123/vad-react (Silero VAD) with react-speech-recognition
- * (Web Speech API) to solve the "missed first words" problem.
+ * Uses @ricky0123/vad-web (Silero VAD) loaded from CDN via window.vad,
+ * combined with react-speech-recognition (Web Speech API).
  *
  * Strategy:
- *   - VAD runs continuously while `enabled` is true, detecting speech onset
- *     near-instantly via the Silero neural-network model.
- *   - When VAD fires `onSpeechStart`, we immediately kick off Web Speech API
- *     recognition so it's already listening when words arrive.
- *   - When VAD fires `onSpeechEnd`, we commit whatever text the Web Speech API
- *     has captured as a complete utterance.
- *   - The VAD's `preSpeechPadMs` (default 800ms) buffers audio *before* the
- *     detected speech start, compensating for the Web Speech API startup lag.
- *
- * Falls back to plain react-speech-recognition if VAD fails to load.
+ *   - On mount, we call window.vad.MicVAD.new() imperatively so the ONNX
+ *     runtime is pulled from the same CDN as the model â€” no COOP/COEP headers
+ *     required, no local /public asset copies needed.
+ *   - When VAD fires onSpeechStart, Web Speech API starts immediately.
+ *   - When VAD fires onSpeechEnd, we commit whatever the Web Speech API captured.
+ *   - Falls back to plain continuous Web Speech API if VAD fails to load.
  */
 import { useEffect, useRef, useCallback, useState } from "react";
 import SpeechRecognition, {
   useSpeechRecognition,
 } from "react-speech-recognition";
-import { useMicVAD } from "@ricky0123/vad-react";
 
 /**
  * @param {Object} opts
- * @param {boolean}  opts.enabled     — whether capture is active
- * @param {boolean}  opts.muted       — soft-mute (ignore transcripts but keep mic open)
- * @param {function} opts.onUtterance — called with (finalText: string) when a phrase ends
- * @param {function} opts.onError     — called with (message: string) on failure
- * @param {number}   [opts.silenceMs=2500] — fallback silence timeout (only used when VAD is unavailable)
+ * @param {boolean}  opts.enabled     â€” whether capture is active
+ * @param {boolean}  opts.muted       â€” soft-mute (ignore transcripts but keep mic open)
+ * @param {function} opts.onUtterance â€” called with (finalText: string) when a phrase ends
+ * @param {function} opts.onError     â€” called with (message: string) on failure
+ * @param {number}   [opts.silenceMs=2500] â€” fallback silence timeout when VAD is unavailable
  */
 export default function useVoiceCapture({
   enabled = false,
@@ -37,7 +32,7 @@ export default function useVoiceCapture({
   onError,
   silenceMs = 2500,
 }) {
-  /* ── Web Speech API ── */
+  /* â”€â”€ Web Speech API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   const {
     transcript,
     interimTranscript,
@@ -47,91 +42,118 @@ export default function useVoiceCapture({
     browserSupportsSpeechRecognition,
   } = useSpeechRecognition();
 
-  /* ── Refs to avoid stale closures ── */
+  /* â”€â”€ Stable refs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   const onUtteranceRef = useRef(onUtterance);
-  const onErrorRef = useRef(onError);
-  useEffect(() => {
-    onUtteranceRef.current = onUtterance;
-  }, [onUtterance]);
-  useEffect(() => {
-    onErrorRef.current = onError;
-  }, [onError]);
+  const onErrorRef     = useRef(onError);
+  useEffect(() => { onUtteranceRef.current = onUtterance; }, [onUtterance]);
+  useEffect(() => { onErrorRef.current     = onError;     }, [onError]);
 
-  const lastFinal = useRef("");
+  const lastFinal    = useRef("");
   const silenceTimer = useRef(null);
-  const [vadReady, setVadReady] = useState(false);
 
-  /* ── Commit whatever text we have ── */
+  /* â”€â”€ VAD state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  const vadRef          = useRef(null);   // MicVAD instance
+  const [vadReady,   setVadReady]   = useState(false);
+  const [vadLoading, setVadLoading] = useState(false);
+  const [vadErrored, setVadErrored] = useState(false);
+  const [userSpeaking, setUserSpeaking] = useState(false);
+
+  /* â”€â”€ Commit current phrase â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   const commitPhrase = useCallback(() => {
     if (muted) return;
     const text = lastFinal.current.trim();
-    if (text && onUtteranceRef.current) {
-      onUtteranceRef.current(text);
-    }
+    if (text && onUtteranceRef.current) onUtteranceRef.current(text);
     lastFinal.current = "";
     resetTranscript();
   }, [muted, resetTranscript]);
 
-  /* ── VAD callbacks ── */
-  const handleSpeechStart = useCallback(() => {
-    if (!enabled || muted) return;
-    // Kick off Web Speech API immediately so it's listening when words arrive
-    if (browserSupportsSpeechRecognition) {
-      SpeechRecognition.startListening({ continuous: true, language: "en-US" });
-    }
-  }, [enabled, muted, browserSupportsSpeechRecognition]);
-
-  const handleSpeechEnd = useCallback(
-    (_audio) => {
-      // _audio is Float32Array @ 16kHz — we could send this to a server-side
-      // ASR engine in the future, but for now we rely on Web Speech API text.
-      if (!enabled || muted) return;
-
-      // Give Web Speech API a tiny window to finalize its last transcript
-      clearTimeout(silenceTimer.current);
-      silenceTimer.current = setTimeout(() => {
-        commitPhrase();
-      }, 350);
-    },
-    [enabled, muted, commitPhrase]
-  );
-
-  /* ── VAD hook (always called — React hooks rules) ── */
-  const vad = useMicVAD({
-    startOnLoad: false,
-    onSpeechStart: handleSpeechStart,
-    onSpeechEnd: handleSpeechEnd,
-    positiveSpeechThreshold: 0.3,
-    negativeSpeechThreshold: 0.25,
-    redemptionMs: 1400,
-    preSpeechPadMs: 800,
-    minSpeechMs: 400,
-    // Assets are served from public/ — copied from node_modules at install time
-    modelURL: "/silero_vad_legacy.onnx",
-    workletURL: "/vad.worklet.bundle.min.js",
-    ortConfig: (ort) => {
-      ort.env.wasm.wasmPaths = "/";
-    },
-  });
-
-  /* ── Track VAD readiness ── */
+  /* â”€â”€ Initialise VAD from CDN global (runs once) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   useEffect(() => {
-    if (vad && !vad.loading && !vad.errored) {
-      setVadReady(true);
+    // window.vad is injected by the CDN bundle.min.js script tag in index.html.
+    // If it's not there yet (e.g. script blocked), bail out gracefully.
+    if (typeof window.vad === "undefined" || !window.vad?.MicVAD) {
+      console.warn(
+        "[VAD] window.vad not found â€” CDN scripts may not have loaded.\n" +
+        "  Ensure index.html includes ort.wasm.min.js and bundle.min.js before </body>.\n" +
+        "  Falling back to plain Web Speech API."
+      );
+      setVadErrored(true);
+      return;
     }
-    if (vad && vad.errored) {
-      setVadReady(false);
-      if (onErrorRef.current) {
-        const msg =
-          typeof vad.errored === "object" && vad.errored.message
-            ? vad.errored.message
-            : "VAD failed to load — falling back to basic speech recognition";
-        onErrorRef.current(msg);
-      }
-    }
-  }, [vad.loading, vad.errored]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Start/stop VAD + Speech API based on `enabled` ── */
+    let cancelled = false;
+    setVadLoading(true);
+
+    window.vad.MicVAD.new({
+      onSpeechStart: () => {
+        if (cancelled) return;
+        setUserSpeaking(true);
+        if (browserSupportsSpeechRecognition) {
+          SpeechRecognition.startListening({ continuous: true, language: "en-US" });
+        }
+      },
+      onSpeechEnd: (_audio) => {
+        if (cancelled) return;
+        setUserSpeaking(false);
+        // Short delay so Web Speech API can finalize its last interim result.
+        clearTimeout(silenceTimer.current);
+        silenceTimer.current = setTimeout(commitPhrase, 350);
+      },
+      positiveSpeechThreshold: 0.3,
+      negativeSpeechThreshold: 0.25,
+      redemptionFrames: 8,
+      preSpeechPadFrames: 10,
+      minSpeechFrames: 3,
+      // Tell the ONNX runtime and model loader to pull assets from the same
+      // CDN rather than looking for files in /public.
+      onnxWASMBasePath:
+        "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/",
+      baseAssetPath:
+        "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.29/dist/",
+      // Start paused â€” we call .start() / .pause() ourselves.
+      startOnLoad: false,
+    })
+      .then((instance) => {
+        if (cancelled) {
+          try { instance.destroy?.(); } catch { /* ignore */ }
+          return;
+        }
+        vadRef.current = instance;
+        setVadLoading(false);
+        setVadReady(true);
+        console.info("[VAD] Silero VAD loaded via CDN â€” VAD-gated capture active.");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setVadLoading(false);
+        setVadErrored(true);
+        console.error("[VAD] Failed to initialise MicVAD:", err);
+        console.error(
+          "[VAD] Diagnostic checklist:\n" +
+          "  â€¢ Open Network tab and verify the CDN scripts loaded (200 OK).\n" +
+          "  â€¢ Check for Content-Security-Policy headers blocking cdn.jsdelivr.net.\n" +
+          "  â€¢ Ensure the page is served over HTTPS or localhost.\n" +
+          "  Falling back to plain Web Speech API (no VAD gating)."
+        );
+        if (onErrorRef.current) {
+          onErrorRef.current(
+            err?.message
+              ? `VAD error: ${err.message} â€” falling back to basic speech recognition`
+              : "VAD failed to load â€” falling back to basic speech recognition"
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      try { vadRef.current?.destroy?.(); } catch { /* ignore */ }
+      vadRef.current = null;
+    };
+    // commitPhrase is stable; browserSupportsSpeechRecognition is constant.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* â”€â”€ Start / pause VAD + Speech API when `enabled` changes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   useEffect(() => {
     if (!browserSupportsSpeechRecognition) {
       if (enabled && onErrorRef.current) {
@@ -143,26 +165,19 @@ export default function useVoiceCapture({
     }
 
     if (enabled) {
-      // Start VAD if ready
-      if (vadReady && !vad.listening) {
-        vad.start();
-      }
-      // If VAD is not ready yet, fall back to plain continuous listening
-      if (!vadReady) {
-        SpeechRecognition.startListening({
-          continuous: true,
-          language: "en-US",
-        });
+      if (vadReady && vadRef.current) {
+        vadRef.current.start();
+      } else if (!vadLoading) {
+        // VAD unavailable â€” fall straight through to continuous Web Speech API.
+        SpeechRecognition.startListening({ continuous: true, language: "en-US" });
       }
     } else {
-      // Stop everything
-      if (vad.listening) {
-        vad.pause();
-      }
+      try { vadRef.current?.pause(); } catch { /* ignore */ }
       SpeechRecognition.stopListening();
       resetTranscript();
       lastFinal.current = "";
       clearTimeout(silenceTimer.current);
+      setUserSpeaking(false);
     }
 
     return () => {
@@ -170,16 +185,12 @@ export default function useVoiceCapture({
       clearTimeout(silenceTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, browserSupportsSpeechRecognition, vadReady]);
+  }, [enabled, vadReady, browserSupportsSpeechRecognition]);
 
-  /* ── Watch finalTranscript — accumulate + set fallback silence timer ── */
+  /* â”€â”€ Accumulate final transcript + fallback silence timer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   useEffect(() => {
     if (!finalTranscript || muted) return;
-
     lastFinal.current = finalTranscript;
-
-    // If VAD is active, it handles silence detection via onSpeechEnd.
-    // Otherwise use the fallback timer.
     if (!vadReady) {
       clearTimeout(silenceTimer.current);
       silenceTimer.current = setTimeout(commitPhrase, silenceMs);
@@ -189,23 +200,23 @@ export default function useVoiceCapture({
   return {
     /** Current partial (interim) transcript being spoken */
     interimText: interimTranscript,
-    /** Full accumulated transcript (may include partial) */
+    /** Full accumulated transcript */
     fullText: transcript,
-    /** Whether the mic is actively listening */
+    /** Whether the mic is actively listening (Web Speech API) */
     listening,
     /** Whether the user is currently speaking (from VAD) */
-    userSpeaking: vad.userSpeaking,
+    userSpeaking,
     /** Whether the browser supports speech recognition */
     supported: browserSupportsSpeechRecognition,
     /** Whether VAD is loaded and ready */
     vadReady,
-    /** Whether VAD is still loading */
-    vadLoading: vad.loading,
+    /** Whether VAD is still initialising */
+    vadLoading,
     /** Whether VAD encountered an error */
-    vadErrored: !!vad.errored,
+    vadErrored,
     /** Manually commit whatever has been said so far */
     flush: commitPhrase,
-    /** Reset everything */
+    /** Reset transcript buffer */
     reset: useCallback(() => {
       lastFinal.current = "";
       resetTranscript();
@@ -213,3 +224,6 @@ export default function useVoiceCapture({
     }, [resetTranscript]),
   };
 }
+
+// â”€â”€ end of file â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// (duplicate old useVoiceCapture body removed â€” hook now uses window.vad CDN)

@@ -60,7 +60,19 @@ export async function runPipeline(sessionId, patientId, doctorId, segments) {
     }),
   });
 }
-
+/**
+ * Poll node-level pipeline execution progress.
+ * Returns the full PipelineProgress dict:
+ *   { session_id, status, current_node, started_at, completed_at, error,
+ *     nodes: [{ name, label, phase, description, status, started_at,
+ *               completed_at, duration_ms, detail }] }
+ *
+ * Poll ~every 500 ms while pipelineRunning. Stops when status ===
+ * 'completed' or 'failed'.
+ */
+export async function getPipelineStatus(sessionId) {
+  return apiFetch(`/session/${sessionId}/pipeline/status`);
+}
 // ── Transcript ──────────────────────────────────────────────────────────────
 
 /**
@@ -231,4 +243,28 @@ export async function uploadDocuments(sessionId, uploadItems) {
     throw new Error(`Upload failed (${res.status}): ${body}`);
   }
   return res.json();
+}
+
+// ── Patient Profile ─────────────────────────────────────────────────────────
+
+/**
+ * Get the current session's structured record (real-time during session).
+ * Returns the latest structured_record merged from pipeline + OCR.
+ *
+ * @param {string} sessionId
+ * @returns {Promise<Object>} - { structured_record, last_updated }
+ */
+export async function getSessionRecord(sessionId) {
+  return apiFetch(`/session/${sessionId}/record`);
+}
+
+/**
+ * Get a patient's longitudinal medical profile (historical data from DB).
+ * Used to seed the medical record at session start with prior history.
+ *
+ * @param {string} patientId
+ * @returns {Promise<Object>} - { patient_id, demographics, medications, allergies, ... }
+ */
+export async function getPatientProfile(patientId) {
+  return apiFetch(`/patient/${patientId}/profile`);
 }

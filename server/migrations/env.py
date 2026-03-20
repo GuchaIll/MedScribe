@@ -4,14 +4,21 @@ This file is automatically called by Alembic when running migrations.
 """
 
 from logging.config import fileConfig
+from pathlib import Path
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
+from dotenv import load_dotenv
+
+# Load .env from the project root (two levels up from migrations/)
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+# Also load server/.env if present
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 # Import settings to get DATABASE_URL
-from app.config.settings import settings
+from app.config.settings import get_settings
 
 # Import Base and all models
 from app.database.base import Base
@@ -22,7 +29,7 @@ from app.database import models  # noqa: F401 - Import ensures all models are re
 config = context.config
 
 # Override sqlalchemy.url with our settings
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", get_settings().database.url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

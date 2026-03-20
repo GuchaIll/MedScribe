@@ -9,9 +9,10 @@ import {
   uploadDocuments,
   askAssistant,
   speakText,
+  getPipelineStatus,
+  getSessionRecord,
 } from "../api/api";
 
-import Toast from "./ui/Toast";
 import PatientInfoPanel from "./panels/PatientInfoPanel";
 
 import AppHeader from "./layout/AppHeader";
@@ -24,9 +25,11 @@ import useTimer from "../hooks/useTimer";
 import useNotify from "../hooks/useNotify";
 import useVoiceCapture from "../hooks/useVoiceCapture";
 
-import { PHYSICIAN, PATIENT, AGENT, PIPELINE_STEPS, EMPTY_DOCUMENTS } from "../constants";
+import { PHYSICIAN, PATIENT, AGENT, EMPTY_DOCUMENTS } from "../constants";
 
-const ASSISTANT_REGEX = /^assistant[,:\s]+(.+)/i;
+// Forgiving wake-word regex — Web Speech API often mis-transcribes "assistant"
+// as "persistence", "a]sistant", "assistent", etc.
+const ASSISTANT_REGEX = /^(?:assistant|assist\s*ant|persistence|assistent|a]?sistant|hey assistant)[,:\s]+(.+)/i;
 const PATIENT_ID = "patient-default-001";
 
 export default function MedicalTranscription() {
@@ -46,7 +49,8 @@ export default function MedicalTranscription() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const fileInputRef = useRef(null);
-  const [pipelineStep, setPipelineStep] = useState(0);
+  const [pipelineNodes, setPipelineNodes] = useState([]);
+  const [currentNodeLabel, setCurrentNodeLabel] = useState("");
   const [transcribing, setTranscribing] = useState(false);
   const [demoText, setDemoText] = useState("");
   const feedRef = useRef(null);
@@ -56,6 +60,9 @@ export default function MedicalTranscription() {
   const [pipelineResult, setPipelineResult] = useState(null);
   const [documents, setDocuments] = useState(EMPTY_DOCUMENTS);
   const [pipelineRunning, setPipelineRunning] = useState(false);
+  const [structuredRecord, setStructuredRecord] = useState(null);
+  const [lastRecordUpdate, setLastRecordUpdate] = useState(null);
+  const [pendingDocSelect, setPendingDocSelect] = useState(false);
 
   /* ── Notifications ── */
   const { toast, notify, clearToast } = useNotify();
@@ -78,15 +85,48 @@ export default function MedicalTranscription() {
       feedRef.current.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
   }, [msgs]);
 
-  /* ── Pipeline step animation ── */
+  /* ── Poll pipeline status while pipeline is running ── */
   useEffect(() => {
-    if (!transcribing) return;
-    const id = setInterval(
-      () => setPipelineStep((s) => (s + 1) % PIPELINE_STEPS.length),
-      1100
-    );
-    return () => clearInterval(id);
-  }, [transcribing]);
+    if (!pipelineRunning || !sessionId) return;
+    const pollId = setInterval(async () => {
+      try {
+        const data = await getPipelineStatus(sessionId);
+        setPipelineNodes(data.nodes || []);
+        if (data.current_node) {
+          const nodeInfo = (data.nodes || []).find((n) => n.name === data.current_node);
+          setCurrentNodeLabel(nodeInfo ? nodeInfo.label : data.current_node);
+        }
+        // Stop polling once the backend marks the pipeline done
+        if (data.status === "completed" || data.status === "failed") {
+          clearInterval(pollId);
+        }
+      } catch {
+        /* ignore transient network errors during polling */
+      }
+    }, 500);
+    return () => clearInterval(pollId);
+  }, [pipelineRunning, sessionId]);
+
+  /* ── Poll session record for real-time Medical Record updates ── */
+  useEffect(() => {
+    if (!sessionActive || !sessionId) return;
+    const pollRecord = async () => {
+      try {
+        const data = await getSessionRecord(sessionId);
+        if (data?.structured_record) {
+          setStructuredRecord(data.structured_record);
+          setLastRecordUpdate(data.last_updated || new Date().toISOString());
+        }
+      } catch {
+        /* ignore errors - endpoint may not be available yet */
+      }
+    };
+    // Poll every 3 seconds during active session
+    const pollId = setInterval(pollRecord, 3000);
+    // Also poll immediately on session start
+    pollRecord();
+    return () => clearInterval(pollId);
+  }, [sessionActive, sessionId]);
 
   /* ── Start Session ── */
   const handleStartSession = useCallback(async () => {
@@ -104,6 +144,44 @@ export default function MedicalTranscription() {
       setTranscribing(true);
       timer.reset();
       timer.start();
+
+      // Add agent greeting message
+      const greetingId = nextIdRef.current++;
+      const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const greetingMsg = {
+        id: greetingId,
+        speaker: AGENT,
+        time: timeStr,
+        cardType: "greeting",
+        text: `Welcome to MedScribe — your clinical session assistant.
+
+Before we begin, I'd like to explain how this session works and how your information is handled.
+
+This session may be recorded and transcribed using speech recognition and text-to-speech technology to support accurate clinical documentation and improve your care. The information you share will be used only for healthcare-related purposes, including generating medical records, updating your health profile, and assisting with clinical summaries.
+
+Here's how I can support this session:
+
+• **Session Transcription** — Real-time capture of the doctor–patient conversation with speaker identification
+
+• **Medical Document Processing** — Extraction of relevant health history from uploaded documents such as lab results, prior records, and imaging reports
+
+• **Profile Updates** — Updating the patient's medical profile with new information from this session
+
+• **Clinical Documentation** — Generating structured medical records, summaries, and notes
+
+Your privacy is very important. Your information is protected in accordance with HIPAA and other applicable privacy laws. Data is stored securely, encrypted where appropriate, and access is limited to authorized individuals involved in your care or system operations.
+
+You are always in control of what you share. If there's anything you prefer not to discuss or include in the record, please let me know at any time.
+
+You can also say "Assistant, [your question]" at any point to ask about the patient's medical history.
+
+By continuing, you acknowledge that this session may be recorded and used for clinical documentation purposes. If you have any questions about privacy or how your information is used, feel free to ask.
+
+Whenever you're ready, we can begin.`,
+      };
+      setMsgs([greetingMsg]);
+      setTimeout(() => setVis((prev) => new Set([...prev, greetingId])), 100);
+
       notify(`Session started: ${res.session_id.slice(0, 8)}…`, "success");
     } catch (err) {
       notify(`Failed to start session: ${err.message}`, "error");
@@ -294,6 +372,8 @@ export default function MedicalTranscription() {
     }
 
     setPipelineRunning(true);
+    setPipelineNodes([]);
+    setCurrentNodeLabel("");
     setTranscribing(false);
     setRecording(false);
     timer.stop();
@@ -307,6 +387,9 @@ export default function MedicalTranscription() {
         segmentsRef.current
       );
       setPipelineResult(result);
+      if (result.structured_record) {
+        setStructuredRecord(result.structured_record);
+      }
 
       try {
         await endSession(sessionId);
@@ -565,10 +648,36 @@ export default function MedicalTranscription() {
     }
     setUploadOpen(false);
     const toUpload = [...uploadedFiles];
+    const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    // Add processing agent message
+    const processingId = nextIdRef.current++;
+    const fileNames = toUpload.map((f) => f.name).join(", ");
+    const processingMsg = {
+      id: processingId,
+      speaker: AGENT,
+      time: now,
+      cardType: "processing",
+      text: `Processing ${toUpload.length} medical document${toUpload.length > 1 ? "s" : ""}: ${fileNames}
+
+I'm currently:
+• Running OCR to extract text from the document${toUpload.length > 1 ? "s" : ""}
+• Identifying relevant medical fields (medications, allergies, diagnoses, lab results, etc.)
+• Cross-referencing with existing patient records
+• Updating the patient's medical profile with new information
+
+This may take a moment…`,
+    };
+    setMsgs((prev) => [...prev, processingMsg]);
+    setTimeout(() => setVis((prev) => new Set([...prev, processingId])), 100);
+
     notify(`Uploading ${toUpload.length} file(s) — running OCR…`, "success");
     try {
       const res = await uploadDocuments(sessionId, toUpload);
-      const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      // Remove the processing message once complete
+      setMsgs((prev) => prev.filter((m) => m.id !== processingId));
+      
+      const finishTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       for (const file of res.files || []) {
         if (file.error) {
           notify(`OCR failed for ${file.original_name}: ${file.error}`, "error");
@@ -578,7 +687,7 @@ export default function MedicalTranscription() {
         const docMsg = {
           id: docMsgId,
           speaker: AGENT,
-          time: now,
+          time: finishTime,
           text: file.agent_summary || "Document processed successfully.",
           cardType: "document",
           docType: file.document_type?.replace(/_/g, " ") || "document",
@@ -586,7 +695,7 @@ export default function MedicalTranscription() {
           conflictDetails: file.conflict_details || [],
           stats: [
             { value: file.fields_extracted || 0, label: "Fields" },
-            { value: `${Math.round((file.overall_confidence || 0) * 100)}%`, label: "Confidence" },
+            { value: `${Math.round(file.overall_confidence > 1 ? (file.overall_confidence || 0) : (file.overall_confidence || 0) * 100)}%`, label: "Confidence" },
             { value: file.conflicts_detected || 0, label: "Conflicts" },
           ],
           pipeline: [],
@@ -594,6 +703,70 @@ export default function MedicalTranscription() {
         setMsgs((prev) => [...prev, docMsg]);
         setTimeout(() => setVis((prev) => new Set([...prev, docMsgId])), 100);
       }
+      // Persist successfully OCR'd documents into the "Uploaded Docs" tab.
+      // Build object URL map from local file list (before clearing)
+      const localUrlMap = {};
+      for (const item of toUpload) {
+        if (item.file) {
+          localUrlMap[item.name] = URL.createObjectURL(item.file);
+        }
+      }
+
+      const processedFiles = (res.files || [])
+        .filter((f) => !f.error)
+        .map((f) => ({
+          name: f.original_name || f.stored_name || "document",
+          previewUrl: localUrlMap[f.original_name || f.stored_name] || null,
+          // Short badge label derived from document type (e.g. "LAB", "DIS")
+          type: (f.document_type || "doc")
+            .replace(/_/g, " ")
+            .split(" ")
+            .map((w) => w[0]?.toUpperCase())
+            .join("")
+            .slice(0, 4) || "DOC",
+          date: now,
+          size: f.size ? `${(f.size / 1024).toFixed(0)} KB` : "—",
+          status:
+            f.conflicts_detected > 0
+              ? "Conflicts"
+              : (f.processing_errors?.length ?? 0) > 0
+              ? "Review"
+              : "Processed",
+          // overall_confidence is already 0-100 scale from OCR pipeline
+          confidence: f.overall_confidence != null
+            ? (f.overall_confidence > 1
+              ? parseFloat(f.overall_confidence.toFixed(1))
+              : parseFloat((f.overall_confidence * 100).toFixed(1)))
+            : 0,
+          fieldsExtracted: f.fields_extracted || 0,
+          conflictsDetected: f.conflicts_detected || 0,
+          documentId: f.document_id,
+          documentType: f.document_type?.replace(/_/g, " ") || "document",
+          fieldChanges: f.field_changes || [],
+          conflictDetails: f.conflict_details || [],
+        }));
+
+      // If OCR returned a structured_record, merge/store it
+      const ocrRecord = res.structured_record || res.files?.find(f => f.structured_record)?.structured_record;
+      if (ocrRecord) setStructuredRecord(ocrRecord);
+
+      if (processedFiles.length > 0) {
+        setDocuments((prev) => {
+          const existing = prev["Uploaded Docs"]?.files || [];
+          const total = existing.length + processedFiles.length;
+          return {
+            ...prev,
+            "Uploaded Docs": {
+              generated: now,
+              badge: `${total} doc${total !== 1 ? "s" : ""} analyzed`,
+              files: [...existing, ...processedFiles],
+            },
+          };
+        });
+        // Switch to the Uploaded Docs tab so the user sees the result.
+        setTab("Uploaded Docs");
+      }
+
       setUploadedFiles([]);
       notify(`${res.uploaded} document(s) analyzed successfully`, "success");
     } catch (err) {
@@ -641,10 +814,6 @@ export default function MedicalTranscription() {
         input::placeholder,textarea::placeholder{color:rgba(255,255,255,0.2)}
         input:focus,textarea:focus{border-color:rgba(255,255,255,0.16)!important;outline:none}
       `}</style>
-
-      {toast && (
-        <Toast key={toast.key} message={toast.message} type={toast.type} onClose={clearToast} />
-      )}
 
       <div
         style={{
@@ -699,11 +868,11 @@ export default function MedicalTranscription() {
           onTabChange={setTab}
         />
 
-        <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative", zIndex: 1 }}>
+        <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative", zIndex: 22 }}>
           <Sidebar
             sessionActive={sessionActive}
-            pipelineStep={pipelineStep}
-            transcribing={transcribing}
+            pipelineNodes={pipelineNodes}
+            pipelineRunning={pipelineRunning}
             timer={timer}
           />
 
@@ -715,9 +884,12 @@ export default function MedicalTranscription() {
               vis={vis}
               transcribing={transcribing}
               pipelineRunning={pipelineRunning}
-              pipelineStep={pipelineStep}
+              currentNodeLabel={currentNodeLabel}
               onApprove={handleApproveChanges}
-              onSwitchTab={setTab}
+              onSwitchTab={(t) => {
+                setTab(t);
+                if (t === "Uploaded Docs") setPendingDocSelect(true);
+              }}
             />
           ) : (
             <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
@@ -725,6 +897,12 @@ export default function MedicalTranscription() {
                 documents={documents}
                 uploadedFiles={uploadedFiles}
                 onExport={handleExport}
+                structuredRecord={structuredRecord}
+                onSaveRecord={(updatedRecord) => setStructuredRecord(updatedRecord)}
+                sessionActive={sessionActive}
+                lastUpdated={lastRecordUpdate}
+                pendingDocSelect={pendingDocSelect}
+                onDocSelected={() => setPendingDocSelect(false)}
               />
             </div>
           )}
@@ -744,7 +922,7 @@ export default function MedicalTranscription() {
           waveActive={waveActive}
           transcribing={transcribing}
           pipelineRunning={pipelineRunning}
-          pipelineStep={pipelineStep}
+          currentNodeLabel={currentNodeLabel}
           speech={speech}
           sessionActive={sessionActive}
           recording={recording}

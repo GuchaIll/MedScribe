@@ -1,0 +1,65 @@
+# MedScribe Configuration File
+# Environment-specific values can be overridden via .env or OS environment variables
+
+environment: development
+debug: true
+api_title: MedScribe Medical Transcription API
+api_version: 1.0.0
+
+model:
+  # LLM Configuration
+  llm_model: api  # "api" (Groq) or "local" (Ollama/Phi-3)
+  llm_provider: groq  # groq, ollama, huggingface
+  llm_name: mixtral-8x7b-32768
+  llm_max_tokens: 2000
+  llm_temperature: 0.1  # Lower = more deterministic
+  llm_max_budget_per_run: 30  # Max LLM calls per transcription session
+  llm_timeout_seconds: 60
+
+  # Speech-to-Text (Whisper)
+  whisper_model: large-v3
+  whisper_device: cpu  # cpu | cuda | mps
+  whisper_compute_type: int8  # int8 | int16 | float16 | float32
+  whisper_batch_size: 4
+
+  # Model Paths & Checkpoints
+  model_checkpoint_dir: models/checkpoints
+  soap_model_path: null  # If using local SOAP model
+  diarization_model: pyannote/speaker-diarization-3.1
+
+database:
+  # Format: postgresql://user:pass@localhost/dbname
+  # Format: sqlite:///./medscribe.db
+  url: sqlite:///./medscribe.db
+  echo: false  # Log all SQL queries
+  pool_size: 5
+  max_overflow: 10
+  pool_pre_ping: true  # Verify connection before use
+
+storage:
+  backend: local  # local | s3 | gcs | azure
+  base_dir: storage
+  max_file_size_mb: 500
+  allowed_extensions:
+    - pdf
+    - docx
+    - txt
+    - jpg
+    - jpeg
+    - png
+    - tiff
+    - dicom
+    - dcm
+
+logging:
+  level: INFO  # DEBUG | INFO | WARNING | ERROR | CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  log_file: app/logs/medscribe.log
+  log_level_file: DEBUG
+
+features:
+  enable_clinical_suggestions: true
+  enable_human_review: true
+  enable_audit_logging: true
+  enable_performance_monitoring: true
+  performance_log_threshold_ms: 100  # Log slow operations

@@ -1,0 +1,60 @@
+@page {
+  margin: 24mm 18mm;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Source Serif Pro", "Times New Roman", serif;
+  color: #1f2430;
+  background: #f7f5f0;
+  line-height: 1.5;
+  font-size: 11pt;
+}
+
+.report-header {
+  background: linear-gradient(120deg, #f4efe4 0%, #d9e2ec 100%);
+  padding: 18px 20px;
+  border-radius: 12px;
+  border: 1px solid #c7d2e0;
+}
+
+.report-header h1 {
+  margin: 0 0 6px;
+  font-size: 20pt;
+  letter-spacing: 0.5px;
+}
+
+.meta {
+  display: flex;
+  gap: 14px;
+  font-size: 9.5pt;
+  color: #4a5568;
+  flex-wrap: wrap;
+}
+
+.card {
+  background: #ffffff;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #e1e6ef;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+}
+
+.card h2 {
+  margin: 0 0 8px;
+  font-size: 12.5pt;
+  color: #2d3748;
+}
+
+pre {
+  margin: 0;
+  font-family: "Source Code Pro", "Courier New", monospace;
+  font-size: 9.5pt;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #2f3a4a;
+}

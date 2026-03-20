@@ -1,12 +1,11 @@
 import GlassPanel from "../ui/GlassPanel";
 import FluidWave from "../ui/FluidWave";
-import { PIPELINE_STEPS } from "../../constants";
 
 export default function Footer({
   waveActive,
   transcribing,
   pipelineRunning,
-  pipelineStep,
+  currentNodeLabel,
   speech,
   sessionActive,
   recording,
@@ -26,18 +25,7 @@ export default function Footer({
         padding: "0 44px 20px",
         flexShrink: 0,
         zIndex: 20,
-        borderLeft: "none",
-        borderRight: "none",
-        borderBottom: "none",
-        borderRadius: 0,
-        boxShadow:
-          "0 -8px 40px rgba(0,0,0,0.45), 0 -1px 0 rgba(255,255,255,0.06)",
-        background:
-          "linear-gradient(to top, rgba(61,61,61,0.85) 0%, rgba(61,61,61,0.72) 50%, rgba(255,255,255,1.0) 100%)",
-        WebkitMaskImage:
-          "linear-gradient(to top, black 0%, black 50%, transparent 100%)",
-        maskImage:
-          "linear-gradient(to top, black 0%, black 50%, transparent 100%)",
+        borderRadius: "14px 14px 0 0",
       }}
     >
       {/* Waveform */}
@@ -81,7 +69,7 @@ export default function Footer({
                 fontStyle: "italic",
               }}
             >
-              {PIPELINE_STEPS[pipelineStep]}
+              {currentNodeLabel || "Listening…"}
             </span>
             {speech.vadReady && (
               <span
@@ -134,7 +122,7 @@ export default function Footer({
           <span
             style={{
               fontSize: 10,
-              color: "rgba(255,255,255,0.18)",
+              color: "rgba(255,255,255,0.3)",
               fontFamily: "'DM Mono', monospace",
               fontStyle: "italic",
             }}
@@ -262,8 +250,8 @@ export default function Footer({
             border: "none",
             cursor: sessionActive ? "pointer" : "not-allowed",
             color: recording
-              ? "rgba(255,255,255,0.28)"
-              : "rgba(255,255,255,0.7)",
+              ? "rgba(255,255,255,0.38)"
+              : "rgba(255,255,255,0.75)",
             fontSize: 12,
             fontWeight: 600,
             fontFamily: "inherit",
@@ -312,13 +300,13 @@ export default function Footer({
               borderRadius: 99,
               background: pipelineRunning
                 ? "rgba(120,195,255,0.15)"
-                : "rgba(255,255,255,0.08)",
+                : "rgba(255,255,255,0.95)",
               border: pipelineRunning
                 ? "1px solid rgba(120,195,255,0.3)"
-                : "1px solid rgba(255,255,255,0.12)",
+                : "1px solid rgba(0,0,0,0.12)",
               color: pipelineRunning
                 ? "rgba(120,195,255,0.7)"
-                : "rgba(255,255,255,0.75)",
+                : "#1a1a1a",
               fontWeight: 600,
               fontSize: 12,
               cursor:
@@ -331,17 +319,17 @@ export default function Footer({
             }}
             onMouseEnter={(e) => {
               if (sessionActive && !pipelineRunning) {
-                e.currentTarget.style.background = "rgba(255,255,255,0.14)";
-                e.currentTarget.style.color = "rgba(255,255,255,0.95)";
+                e.currentTarget.style.background = "rgba(230,230,230,1)";
+                e.currentTarget.style.color = "#000";
               }
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = pipelineRunning
                 ? "rgba(120,195,255,0.15)"
-                : "rgba(255,255,255,0.08)";
+                : "rgba(255,255,255,0.95)";
               e.currentTarget.style.color = pipelineRunning
                 ? "rgba(120,195,255,0.7)"
-                : "rgba(255,255,255,0.75)";
+                : "#1a1a1a";
             }}
           >
             {pipelineRunning ? "Processing…" : "Complete Transcription"}
@@ -356,24 +344,21 @@ export default function Footer({
             display: "flex",
             alignItems: "center",
             gap: 5,
-            background: uploadOpen ? "rgba(255,255,255,0.08)" : "none",
-            border: uploadOpen
-              ? "1px solid rgba(255,255,255,0.1)"
-              : "1px solid transparent",
+            background: "rgba(200,200,210,1)",
+            border: "1px solid rgba(255,255,255,0.25)",
             borderRadius: 99,
-            padding: "6px 12px",
+            padding: "7px 16px",
             cursor: sessionActive ? "pointer" : "not-allowed",
-            color: uploadOpen
-              ? "rgba(255,255,255,0.65)"
-              : "rgba(255,255,255,0.28)",
+            color: "#1a1a1a",
             fontSize: 12,
-            fontWeight: 600,
+            fontWeight: 700,
             fontFamily: "inherit",
             transition: "all 0.18s",
             opacity: sessionActive ? 1 : 0.3,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
           }}
         >
-          Upload Doc <span style={{ fontSize: 13 }}>⬆</span>
+          Upload Doc
         </button>
       </div>
     </GlassPanel>

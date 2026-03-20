@@ -1,0 +1,19 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+# Source and public are volume-mounted at runtime for hot reload.
+# The COPY below ensures a working image for one-shot builds.
+COPY . .
+
+EXPOSE 3000
+
+# CHOKIDAR_USEPOLLING and WATCHPACK_POLLING are required for file-watch
+# inside Docker on Windows/macOS where inotify events don't propagate.
+ENV CHOKIDAR_USEPOLLING=true
+ENV WATCHPACK_POLLING=true
+
+CMD ["npm", "start"]

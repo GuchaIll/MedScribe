@@ -99,6 +99,7 @@ class GraphState(TypedDict):
     conflict_report: Optional[ConflictReport]
     clinical_note: Optional[str]
     clinical_suggestions: Optional[Dict[str, Any]]  # Clinical decision support suggestions
+    diagnostic_reasoning: Optional[Dict[str, Any]]  # Diagnostic intelligence output
     is_new_patient: bool  # Skip DB lookups for brand-new patients
     controls: Controls
 

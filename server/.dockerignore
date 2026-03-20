@@ -1,0 +1,17 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov
+coverage.xml
+*.egg-info
+.git
+logs/
+storage/
+# .env files must not be baked into the image — env vars come from Docker Compose
+.env
+.env.*

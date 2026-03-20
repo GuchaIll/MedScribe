@@ -1,0 +1,63 @@
+# Docker-specific requirements — excludes the heavy ML packages (torch, pyannote, faster-whisper,
+# openai-whisper) that are not yet active in the pipeline (see Engineering Decisions in README).
+# The CPU-only torch build is used for sentence-transformers (embeddings).
+# When the Whisper / pyannote diarisation feature is re-enabled, add to a separate
+# requirements.ml.txt and extend the Dockerfile with a multi-stage build.
+
+# ── Core Framework ─────────────────────────────────────────────────────────
+fastapi==0.109.2
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# ── Database & ORM ─────────────────────────────────────────────────────────
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+alembic==1.13.1
+asyncpg>=0.29.0
+pgvector
+
+# ── Auth & Security ────────────────────────────────────────────────────────
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.1.2
+python-multipart==0.0.6
+cryptography>=41.0.0
+
+# ── ML (CPU-only — no GPU/audio) ───────────────────────────────────────────
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.2.0+cpu
+sentence-transformers==2.3.1
+numpy==1.26.4
+pandas==2.1.4
+scipy==1.12.0
+
+# ── LangGraph & LangChain ──────────────────────────────────────────────────
+langgraph>=0.1.0
+langchain>=0.1.0
+
+# ── LLM API Client ─────────────────────────────────────────────────────────
+groq==0.4.2
+httpx==0.27.0
+aiohttp==3.9.2
+
+# ── Storage & File Handling ────────────────────────────────────────────────
+aiofiles==23.2.1
+boto3==1.34.19
+python-multipart==0.0.6
+
+# ── OCR ────────────────────────────────────────────────────────────────────
+rapidocr-onnxruntime
+pdf2image
+opencv-python-headless
+pillow
+PyPDF2
+
+# ── Templates & PDF Generation ────────────────────────────────────────────
+jinja2>=3.1.2
+weasyprint>=60.0
+
+# ── Configuration & Logging ───────────────────────────────────────────────
+python-dotenv==1.0.0
+pyyaml==6.0.1
+structlog==24.1.0

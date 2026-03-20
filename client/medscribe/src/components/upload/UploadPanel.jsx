@@ -13,18 +13,21 @@ export default function UploadPanel({
       className="fadeUp"
       style={{
         position: "fixed",
-        bottom: 172,
-        right: 28,
-        width: 310,
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        width: 360,
         zIndex: 40,
       }}
     >
       <GlassPanel
         style={{
           borderRadius: 16,
-          padding: 18,
+          padding: 22,
+          background: "rgba(24,24,30,0.96)",
+          border: "1px solid rgba(255,255,255,0.13)",
           boxShadow:
-            "0 20px 60px rgba(0,0,0,0.55), 0 4px 16px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08)",
+            "0 24px 80px rgba(0,0,0,0.6), 0 8px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08)",
         }}
       >
         <div
@@ -236,16 +239,17 @@ export default function UploadPanel({
             style={{
               marginTop: 10,
               width: "100%",
-              padding: 8,
+              padding: 10,
               borderRadius: 8,
-              background: "rgba(255,255,255,0.08)",
+              background: "#1a1a1a",
               border: "1px solid rgba(255,255,255,0.1)",
-              color: "rgba(255,255,255,0.75)",
-              fontWeight: 600,
+              color: "#f0f0f0",
+              fontWeight: 700,
               fontSize: 12,
               cursor: "pointer",
               fontFamily: "inherit",
               transition: "background 0.18s",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
             }}
           >
             Upload & Analyze ({uploadedFiles.length})

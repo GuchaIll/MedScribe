@@ -1,6 +1,5 @@
 import Bubble from "../chat/Bubble";
 import LiveDot from "../ui/LiveDot";
-import { PIPELINE_STEPS } from "../../constants";
 
 export default function TranscriptionFeed({
   feedRef,
@@ -9,7 +8,7 @@ export default function TranscriptionFeed({
   vis,
   transcribing,
   pipelineRunning,
-  pipelineStep,
+  currentNodeLabel,
   onApprove,
   onSwitchTab,
 }) {
@@ -60,8 +59,8 @@ export default function TranscriptionFeed({
         />
       ))}
 
-      {transcribing && <LiveDot step={PIPELINE_STEPS[pipelineStep]} />}
-      {pipelineRunning && <LiveDot step="Running full pipeline…" />}
+      {transcribing && <LiveDot step={currentNodeLabel || "Listening…"} />}
+      {pipelineRunning && <LiveDot step={currentNodeLabel || "Running pipeline…"} />}
     </main>
   );
 }

@@ -33,6 +33,26 @@ CONFIDENCE_THRESHOLD = 0.65
 TOP_K = 6
 RETRIEVAL_FLOOR = 0.30  # Minimum cosine similarity to include a result
 
+# Lazy imports to avoid circular dependencies -- resolved at runtime
+_HybridRetrievalService = None
+_IterativeRetrievalService = None
+
+
+def _get_hybrid_class():
+    global _HybridRetrievalService
+    if _HybridRetrievalService is None:
+        from app.services.hybrid_retrieval import HybridRetrievalService
+        _HybridRetrievalService = HybridRetrievalService
+    return _HybridRetrievalService
+
+
+def _get_iterative_class():
+    global _IterativeRetrievalService
+    if _IterativeRetrievalService is None:
+        from app.services.iterative_retrieval import IterativeRetrievalService
+        _IterativeRetrievalService = IterativeRetrievalService
+    return _IterativeRetrievalService
+
 
 @dataclass
 class AssistantResponse:
@@ -54,6 +74,9 @@ Be concise but complete. Cite which section of the records your answer comes fro
 
 --- STRUCTURED MEDICAL RECORDS ---
 {structured_records}
+
+--- LIVE SESSION TRANSCRIPT ---
+{live_session}
 
 --- CLINICAL FACTS FROM PATIENT HISTORY ---
 {clinical_facts}
@@ -82,11 +105,16 @@ class AssistantService:
         record_repo: RecordRepository,
         llm_factory: Callable[[], LLMClient],
         db: DBSession,
+        hybrid_retrieval: Any = None,
+        iterative_retrieval: Any = None,
     ) -> None:
         self.embedding_service = embedding_service
         self.record_repo = record_repo
         self.llm_factory = llm_factory
         self.db = db
+        # RAG enhancement services (optional -- fall back to dense-only)
+        self._hybrid = hybrid_retrieval
+        self._iterative = iterative_retrieval
 
     # ── Public API ───────────────────────────────────────────────────────────
 
@@ -96,6 +124,8 @@ class AssistantService:
         session_id: str,
         question: str,
         doctor_id: str = "",
+        live_transcript: Optional[List[Dict[str, Any]]] = None,
+        live_structured_record: Optional[Dict[str, Any]] = None,
     ) -> AssistantResponse:
         """
         Answer a clinical question about a patient using RAG.
@@ -106,10 +136,11 @@ class AssistantService:
         3. Retrieve relevant transcript/document chunks (chunk_embeddings across
            all sessions for this patient).
         4. Fetch latest finalized MedicalRecord structured data.
-        5. Compute confidence from retrieval scores.
-        6. If no context: admit unavailability without calling LLM.
-        7. Build grounded prompt and call LLM.
-        8. Attach disclaimer if confidence < threshold.
+        5. Incorporate live in-memory session transcript and structured record.
+        6. Compute confidence from retrieval scores (or use floor if only live data).
+        7. If no context at all: admit unavailability without calling LLM.
+        8. Build grounded prompt and call LLM.
+        9. Attach disclaimer if confidence < threshold.
         """
         logger.info(
             "Assistant query — patient=%s session=%s question=%r",
@@ -128,28 +159,38 @@ class AssistantService:
             )
 
         # 2. Clinical facts (cross-visit, is_final=True)
-        clinical_results = self._retrieve_clinical_facts(patient_id, query_vec)
+        clinical_results = self._retrieve_clinical_facts(patient_id, query_vec, question)
 
         # 3. Chunk embeddings (all sessions for this patient)
-        chunk_results = self._retrieve_chunks_for_patient(patient_id, query_vec)
+        chunk_results = self._retrieve_chunks_for_patient(patient_id, query_vec, question)
 
-        # 4. Structured records (latest 3 finalized)
+        # 4. Structured records (latest 3 finalized from DB)
         structured_records = self._retrieve_structured_records(patient_id)
 
-        # 5. Confidence
+        # 5. Incorporate live in-memory session data
+        has_live_data = bool(live_transcript or live_structured_record)
+        if live_structured_record:
+            # Prepend the live record so it takes priority over stale DB records
+            structured_records = [live_structured_record] + structured_records
+
+        # 6. Confidence — if live data is present but no pgvector hits yet,
+        #    use a base confidence of 0.50 so the LLM can still be called.
         all_scores = [r["similarity"] for r in clinical_results + chunk_results]
         confidence = _compute_confidence(all_scores)
+        if has_live_data and confidence == 0.0:
+            confidence = 0.50  # live transcript is present but not yet embedded
 
-        # 6. No context at all → admit unavailability
-        if not all_scores and not structured_records:
+        # 7. No context at all → admit unavailability
+        if not all_scores and not structured_records and not has_live_data:
             return self._unavailable_response(
                 "I don't have sufficient information in this patient's records "
                 "to answer that question. Please consult the full chart."
             )
 
-        # 7. Build prompt and call LLM
+        # 8. Build prompt and call LLM
         prompt = _PROMPT_TEMPLATE.format(
             structured_records=_format_structured_records(structured_records),
+            live_session=_format_live_transcript(live_transcript),
             clinical_facts=_format_clinical_facts(clinical_results),
             chunk_excerpts=_format_chunks(chunk_results),
             question=question,
@@ -165,7 +206,7 @@ class AssistantService:
                 "Please consult the patient's chart directly."
             )
 
-        # 8. Disclaimer if low confidence
+        # 9. Disclaimer if low confidence
         low_confidence = confidence < CONFIDENCE_THRESHOLD
         disclaimer: Optional[str] = None
         if low_confidence:
@@ -190,9 +231,39 @@ class AssistantService:
     # ── Retrieval helpers ────────────────────────────────────────────────────
 
     def _retrieve_clinical_facts(
-        self, patient_id: str, query_vec: np.ndarray
+        self, patient_id: str, query_vec: np.ndarray, question: str = ""
     ) -> List[Dict[str, Any]]:
-        """pgvector search against clinical_embeddings for this patient."""
+        """
+        Retrieve clinical facts for a patient.
+
+        Uses iterative retrieval -> hybrid retrieval -> dense-only, in
+        order of preference based on what services are available.
+        """
+        # Path A: Iterative retrieval (multi-pass hybrid)
+        if self._iterative and question:
+            try:
+                return self._iterative.retrieve_patient_facts(
+                    patient_id=patient_id,
+                    query=question,
+                    top_k=TOP_K,
+                    only_final=True,
+                )
+            except Exception as exc:
+                logger.warning("Iterative fact retrieval failed, trying hybrid: %s", exc)
+
+        # Path B: Single-pass hybrid retrieval
+        if self._hybrid and question:
+            try:
+                return self._hybrid.search_patient_facts(
+                    patient_id=patient_id,
+                    query=question,
+                    top_k=TOP_K,
+                    only_final=True,
+                )
+            except Exception as exc:
+                logger.warning("Hybrid fact retrieval failed, falling back to dense: %s", exc)
+
+        # Path C: Dense-only (original behavior)
         try:
             return self.embedding_service.search_patient_facts(
                 patient_id=patient_id,
@@ -206,12 +277,37 @@ class AssistantService:
             return []
 
     def _retrieve_chunks_for_patient(
-        self, patient_id: str, query_vec: np.ndarray
+        self, patient_id: str, query_vec: np.ndarray, question: str = ""
     ) -> List[Dict[str, Any]]:
         """
-        pgvector search against chunk_embeddings joined to sessions,
-        scoped to all sessions belonging to this patient.
+        Retrieve transcript/document chunks for a patient.
+
+        Uses iterative retrieval -> hybrid retrieval -> dense-only, in
+        order of preference based on what services are available.
         """
+        # Path A: Iterative retrieval (multi-pass hybrid)
+        if self._iterative and question:
+            try:
+                return self._iterative.retrieve_patient_chunks(
+                    patient_id=patient_id,
+                    query=question,
+                    top_k=TOP_K,
+                )
+            except Exception as exc:
+                logger.warning("Iterative chunk retrieval failed, trying hybrid: %s", exc)
+
+        # Path B: Single-pass hybrid retrieval
+        if self._hybrid and question:
+            try:
+                return self._hybrid.search_chunks_for_patient(
+                    patient_id=patient_id,
+                    query=question,
+                    top_k=TOP_K,
+                )
+            except Exception as exc:
+                logger.warning("Hybrid chunk retrieval failed, falling back to dense: %s", exc)
+
+        # Path C: Dense-only (original behavior)
         if self.db is None:
             return []
 
@@ -291,19 +387,42 @@ def _compute_confidence(scores: List[float]) -> float:
     return sum(s * w for s, w in zip(sorted_scores, weights)) / sum(weights)
 
 
+def _format_live_transcript(transcript: Optional[List[Dict[str, Any]]]) -> str:
+    """Format the in-memory session utterances for the LLM prompt."""
+    if not transcript:
+        return "No live session transcript available."
+    lines = []
+    for entry in transcript:
+        speaker = entry.get("speaker", "Unknown")
+        text = entry.get("text", "").strip()
+        if text:
+            lines.append(f"{speaker}: {text}")
+    return "\n".join(lines) if lines else "No live session transcript available."
+
+
 def _format_structured_records(records: List[Dict[str, Any]]) -> str:
     if not records:
         return "No finalized structured records available."
     parts = []
+    # Metadata keys that should not be included as clinical content
+    _META_KEYS = {"_conflicts", "_low_confidence", "_db_seeded_fields"}
     for i, rec in enumerate(records, start=1):
         parts.append(f"[Record {i}]")
-        for key in (
-            "patient", "allergies", "medications", "diagnoses",
-            "vitals", "labs", "procedures", "followups",
-        ):
-            value = rec.get(key)
-            if value:
-                parts.append(f"  {key.upper()}: {json.dumps(value, default=str)}")
+        for key, value in rec.items():
+            if key in _META_KEYS:
+                continue
+            # Skip empty / null leaf values
+            if value is None:
+                continue
+            if isinstance(value, (list, dict)) and not value:
+                continue
+            # For dicts, skip if every nested value is None/empty
+            if isinstance(value, dict) and all(
+                v is None or v == "" or (isinstance(v, (list, dict)) and not v)
+                for v in value.values()
+            ):
+                continue
+            parts.append(f"  {key.upper()}: {json.dumps(value, default=str)}")
     return "\n".join(parts) if parts else "No data."
 
 
