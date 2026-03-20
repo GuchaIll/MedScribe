@@ -1,131 +1,80 @@
 # MedScribe — System Architecture
 
-## C4 Component Diagram
+## Component Diagram
 
 ```mermaid
-C4Component
-    title MedScribe System Architecture
+flowchart TB
+    subgraph FE["Browser Client (React 18 + TypeScript)"]
+        VAD["Silero VAD\n@ricky0123/vad-react\nONNX speech onset ~50-100ms"]
+        UI["MedicalTranscription\nSession lifecycle + pipeline trigger"]
+        UPL["Document Upload\nMultipart PDF / image"]
+    end
 
-    Container_Boundary(fe, "Browser Client — React 18 + TypeScript") {
-        Component(vad, "Silero VAD + Web Speech API", "ONNX / Browser API", "50-100ms speech onset detection via @ricky0123/vad-react; gates Web Speech to prevent missed utterance starts")
-        Component(ui, "MedicalTranscription", "React Component", "Session lifecycle, segment accumulation, pipeline trigger, record display")
-        Component(upload, "Document Upload", "React Component", "Multipart PDF and image upload")
-    }
+    subgraph API["FastAPI Backend — port 3001"]
+        SESS["Session Router\n/api/session/*"]
+        PIPE["POST /api/session/{id}/pipeline\nWorkflowEngine invoke"]
+        CLIN["Clinical Router\n/api/clinical/*"]
+        REC["Records Router\n/api/records/*"]
+    end
 
-    Container_Boundary(api, "FastAPI Backend — Port 3001") {
-        Component(sess, "Session Router", "FastAPI Router", "/api/session/* — start, end, transcribe, upload, queue, pipeline/status")
-        Component(pipe, "Pipeline Endpoint", "FastAPI Router", "POST /api/session/{id}/pipeline — initialises GraphState and invokes WorkflowEngine")
-        Component(clin, "Clinical Router", "FastAPI Router", "/api/clinical/* — on-demand allergy and interaction checks")
-        Component(rec, "Records Router", "FastAPI Router", "/api/records/* — Jinja2 template selection and WeasyPrint document generation")
-    }
+    subgraph OCR["OCR Pipeline — server/app/core/ocr/"]
+        direction LR
+        S1["1 page_splitter"] --> S2["2 preprocessor"] --> S3["3 layout_detector"] --> S4["4 handwriting_detector"]
+        S4 --> S5["5 extractor\nRapidOCR + fallback"] --> S6["6 normalizer"] --> S7["7 document_classifier"] --> S8["8 field_extractor"] --> S9["9 conflict_detector"]
+    end
 
-    Container_Boundary(lg, "LangGraph Workflow Engine — server/app/agents/") {
+    subgraph LG["LangGraph Pipeline — 18 nodes (server/app/agents/)"]
+        direction TB
+        N1["greeting"] --> N2["load_patient_context"] --> N3["ingest"] --> N4["clean_transcription"]
+        N4 --> N5["normalize_transcript"] --> N6["segment_and_chunk"] --> N7["extract_candidates"]
+        N7 --> N8["diagnostic_reasoning"] --> N9["retrieve_evidence"] --> N10["fill_structured_record"]
+        N10 --> N11["clinical_suggestions"] --> N12["validate_and_score"]
 
-        Container_Boundary(phase0, "Preamble") {
-            Component(greet, "greeting", "LangGraph Node", "Seeds initial state; sets welcome message for physician")
-            Component(loadctx, "load_patient_context", "LangGraph Node", "Loads prior patient facts, demographics, and visit history from PostgreSQL into GraphState")
-        }
+        N12 -->|"schema errors, attempts < 3"| N13["repair"]
+        N13 -->|"retry"| N12
 
-        Container_Boundary(phase1, "Ingestion Phase") {
-            Component(ingest, "ingest", "LangGraph Node", "Loads transcript segments and OCR DocumentArtifacts into GraphState.chunks")
-            Component(clean, "clean_transcription", "LangGraph Node", "Removes disfluencies, expands medical abbreviations")
-            Component(norm, "normalize_transcript", "LangGraph Node", "Standardises medical terminology")
-            Component(segment, "segment_and_chunk", "LangGraph Node", "Splits conversation into topical clinical chunks")
-        }
+        N12 -->|"conflicts"| N14["conflict_resolution"]
+        N14 -->|"unresolved"| N15["human_review_gate"]
+        N14 -->|"resolved"| N16["generate_note"]
 
-        Container_Boundary(phase2, "Extraction Phase") {
-            Component(extract, "extract_candidates", "LangGraph Node", "NLP entity extraction — medications, diagnoses, lab values, ICD-10 codes → CandidateFact list")
-            Component(diagr, "diagnostic_reasoning", "LangGraph Node", "LLM-assisted differential diagnosis reasoning over extracted candidates")
-            Component(evidence, "retrieve_evidence", "LangGraph Node", "pgvector ANN search anchors each CandidateFact to source utterance or document chunk")
-            Component(fill, "fill_structured_record", "LangGraph Node", "Maps candidate facts to typed StructuredRecord Pydantic schema")
-        }
+        N12 -->|"needs_review"| N15
+        N12 -->|"valid"| N16
 
-        Container_Boundary(phase3, "Validation and Safety Phase") {
-            Component(sugg, "clinical_suggestions", "LangGraph Node", "Structured lookup against patient allergy list and medication history; LLM used only for disambiguation")
-            Component(validate, "validate_and_score", "LangGraph Node", "Pydantic + contract validation, per-field confidence threshold checking, cross-visit contradiction detection. Sets needs_review=True on any error, conflict, or missing required field")
-            Component(repair, "repair [loop max 3x]", "LangGraph Node", "LLM-guided schema repair on validation failure; routes back to validate_and_score")
-            Component(conflict, "conflict_resolution", "LangGraph Node", "Resolves value discrepancies between extracted facts and stored patient history")
-            Component(gate, "human_review_gate", "LangGraph Node — INTERRUPT", "Pauses graph execution (interrupt_before) for physician approval. Currently enable_interrupts=False at the /pipeline endpoint — node runs but does not pause.")
-        }
+        N15 --> N17["package_outputs"]
+        N16 --> N17
+        N17 --> N18["persist_results"]
+    end
 
-        Container_Boundary(phase4, "Output Phase") {
-            Component(generate, "generate_note", "LangGraph Node", "LLM generates structured SOAP clinical note from filled record and patient context")
-            Component(pkg, "package_outputs", "LangGraph Node", "Assembles final response payload from generate_note or human_review_gate branch")
-            Component(persist, "persist_results", "LangGraph Node", "Writes StructuredRecord, embeddings, and full node-level audit trace (controls.trace_log) to PostgreSQL")
-        }
-    }
+    subgraph DATA["Data Layer"]
+        PG[("PostgreSQL + pgvector\nRecords, embeddings, audit logs")]
+        SQ[("SQLite\nLangGraph checkpoints\nper-node state snapshots")]
+        GROQ["Groq API\nllama-3.3-70b-versatile\nLLM inference"]
+        EL["ElevenLabs TTS\nbrowser SpeechSynthesis fallback"]
+    end
 
-    Container_Boundary(ocr, "OCR Pipeline — server/app/core/ocr/") {
-        Component(splitter, "page_splitter", "Stage 1", "Converts PDF pages and images to normalised page images")
-        Component(pre, "preprocessor", "Stage 2", "Deskew, denoise, contrast enhancement")
-        Component(layout, "layout_detector", "Stage 3", "Region segmentation")
-        Component(hw, "handwriting_detector", "Stage 4", "Classifies handwritten vs printed text regions for engine selection")
-        Component(ocreng, "extractor", "Stage 5", "RapidOCR with engine fallback for per-region text extraction")
-        Component(ocrnorm, "normalizer", "Stage 6", "Medical spelling correction")
-        Component(docclass, "document_classifier", "Stage 7", "Document type classification (lab report, discharge summary, referral, etc.)")
-        Component(field, "field_extractor", "Stage 8", "Medical NLP patterns and LLM extraction of structured fields with per-field confidence scores")
-        Component(confdet, "conflict_detector", "Stage 9", "Flags value conflicts between OCR fields and active patient record")
-    }
+    VAD -->|"utterances"| UI
+    UI -->|"POST start, transcribe"| SESS
+    UI -->|"POST pipeline"| PIPE
+    UI -->|"GET pipeline/status"| SESS
+    UPL -->|"POST upload"| SESS
 
-    Container_Boundary(data, "Data Layer") {
-        Component(pg, "PostgreSQL + pgvector", "Primary Database", "Patient profiles, sessions, structured records, embeddings, audit logs")
-        Component(chk, "SQLite Checkpoints", "LangGraph SqliteSaver", "Graph state snapshot after every node — keyed by thread_id (session_id). Enables interrupt/resume: graph.invoke(None, config) continues from last checkpoint.")
-        Component(groq, "Groq API — llama-3.3-70b-versatile", "External LLM", "SOAP note generation, diagnostic reasoning, schema repair, field disambiguation")
-        Component(elevenlabs, "ElevenLabs TTS", "External API", "Clinical note text-to-speech readback (ELEVEN_LABS_API_KEY); browser SpeechSynthesis fallback")
-    }
+    SESS -->|"dispatch file"| OCR
+    S9 -->|"DocumentProcessingResult"| SESS
 
-    Rel(vad, ui, "Utterances with timestamps")
-    Rel(ui, sess, "POST /api/session/start, /transcribe")
-    Rel(ui, pipe, "POST /api/session/{id}/pipeline with accumulated segments")
-    Rel(upload, sess, "POST /api/session/{id}/upload multipart")
-    Rel(ui, sess, "GET /api/session/{id}/pipeline/status (polls every ~500ms)")
+    PIPE --> LG
 
-    Rel(sess, ocr, "Dispatches uploaded file to OCR pipeline")
-    Rel(splitter, pre, "")
-    Rel(pre, layout, "")
-    Rel(layout, hw, "")
-    Rel(hw, ocreng, "")
-    Rel(ocreng, ocrnorm, "")
-    Rel(ocrnorm, docclass, "")
-    Rel(docclass, field, "")
-    Rel(field, confdet, "")
-    Rel(confdet, sess, "DocumentProcessingResult stored in session queue")
+    N2 -->|"patient history lookup"| PG
+    N9 -->|"ANN embedding query"| PG
+    N8 -->|"LLM reasoning"| GROQ
+    N13 -->|"LLM schema repair"| GROQ
+    N16 -->|"LLM SOAP note"| GROQ
+    S8 -->|"LLM field disambiguation"| GROQ
+    N18 -->|"write record + embeddings"| PG
+    N18 -->|"checkpoint commit"| SQ
 
-    Rel(pipe, greet, "Initialises GraphState and invokes WorkflowEngine")
-    Rel(greet, loadctx, "")
-    Rel(loadctx, ingest, "")
-    Rel(ingest, clean, "")
-    Rel(clean, norm, "")
-    Rel(norm, segment, "")
-    Rel(segment, extract, "")
-    Rel(extract, diagr, "")
-    Rel(diagr, evidence, "")
-    Rel(evidence, fill, "")
-    Rel(fill, sugg, "")
-    Rel(sugg, validate, "")
-    Rel(validate, repair, "schema_errors=true AND repair_attempts < 3")
-    Rel(repair, validate, "retry")
-    Rel(validate, conflict, "conflicts present")
-    Rel(validate, gate, "needs_review=true (no schema errors)")
-    Rel(validate, generate, "valid, no interrupt required")
-    Rel(conflict, gate, "unresolved conflicts")
-    Rel(conflict, generate, "all conflicts resolved")
-    Rel(gate, pkg, "physician approved (or interrupts disabled)")
-    Rel(generate, pkg, "")
-    Rel(pkg, persist, "")
-
-    Rel(loadctx, pg, "Load prior patient facts + visit history")
-    Rel(evidence, pg, "pgvector ANN embedding query")
-    Rel(generate, groq, "LLM completion for SOAP note")
-    Rel(diagr, groq, "LLM differential diagnosis reasoning")
-    Rel(repair, groq, "LLM schema repair")
-    Rel(field, groq, "LLM field disambiguation")
-    Rel(persist, pg, "SQLAlchemy ORM — patient record + embeddings write")
-    Rel(persist, chk, "LangGraph checkpoint commit after each node")
-
-    Rel(clin, pg, "Patient allergy and medication history lookup")
-    Rel(rec, pg, "Fetch structured record for template rendering")
-    Rel(rec, elevenlabs, "TTS synthesis on generated note")
+    CLIN -->|"allergy / medication lookup"| PG
+    REC -->|"fetch record for template"| PG
+    REC -->|"TTS synthesis"| EL
 ```
 
 ---
