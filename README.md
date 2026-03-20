@@ -4,6 +4,15 @@ A Real-Time, LangGraph-Orchestrated Medical Intelligence System for Automated Cl
 
 ---
 
+## Demo
+
+| OCR Document Intelligence | Agent Query |
+|:-:|:-:|
+| [![OCR Pipeline Demo](examples/thumbnail-ocr.svg)](examples/OCR.mp4) | [![Agent Query Demo](examples/thumbnail-agent-query.svg)](examples/Agent%20Query.mp4) |
+| 9-stage OCR pipeline — PDF/image ingestion, deskew, layout detection, structured field extraction | Voice-triggered assistant query with LangGraph clinical reasoning and decision support |
+
+---
+
 ## The Problem
 
 Clinical documentation consumes an estimated 30–50% of physician time per shift. Existing transcription tools produce raw text, leaving the burden of structure extraction, conflict detection, and decision support entirely to the clinician. Legacy records exist in fragmented formats — handwritten notes, scanned PDFs, discharge summaries — that cannot be queried or integrated at the point of care.
