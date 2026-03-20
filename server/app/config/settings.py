@@ -1,144 +1,186 @@
 """
-Configuration management using Pydantic Settings.
-Environment-based configuration for development and production.
+Application configuration and settings management.
+
+Loads configuration from:
+1. config.yaml (application config)
+2. .env (environment variables)
+3. os.environ (system environment)
 """
 
-from pydantic_settings import BaseSettings
-from typing import Optional
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Literal, Optional
 import os
+import yaml
 
 
-class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
-
-    # Environment
-    ENVIRONMENT: str = "development"  # development, staging, production
-    DEBUG: bool = True
-
-    # Database
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/medscribe"
-    DB_ECHO: bool = False  # SQLAlchemy echo mode
-    DB_POOL_SIZE: int = 5
-    DB_MAX_OVERFLOW: int = 10
-
-    # Redis (for session management - post-MVP)
-    REDIS_URL: str = "redis://localhost:6379/0"
-    REDIS_PASSWORD: Optional[str] = None
-
-    # Storage
-    STORAGE_BACKEND: str = "local"  # local, s3, gcp, azure
-    STORAGE_BASE_DIR: str = "storage"
-
-    # AWS S3 (for production - post-MVP)
-    S3_BUCKET: Optional[str] = None
-    S3_REGION: str = "us-east-1"
-    AWS_ACCESS_KEY_ID: Optional[str] = None
-    AWS_SECRET_ACCESS_KEY: Optional[str] = None
-
-    # Security & Authentication
-    SECRET_KEY: str = "CHANGE_THIS_IN_PRODUCTION"  # Used for JWT signing
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-
-    # Encryption (for PHI data)
-    ENCRYPTION_KEY: Optional[str] = None  # Fernet key for field-level encryption
-
-    # External APIs
-    GROQ_API_KEY: Optional[str] = None
-    HUGGINGFACE_API_KEY: Optional[str] = None
-    HF_TOKEN: Optional[str] = None
+@dataclass
+class ModelConfig:
+    """Model loading and inference configuration."""
 
     # LLM Configuration
-    LLM_MODEL: str = "api"  # "local" or "api"
-    LLM_MAX_BUDGET: int = 30  # Max LLM calls per workflow
-    LLM_MAX_TOKENS: int = 2000
-    LLM_TEMPERATURE: float = 0.1
+    llm_model: Literal["api", "local"] = "api"
+    llm_provider: str = "groq"  # groq, ollama, huggingface
+    llm_name: str = "mixtral-8x7b-32768"
+    llm_max_tokens: int = 2000
+    llm_temperature: float = 0.1
+    llm_max_budget_per_run: int = 30  # Max LLM calls per workflow
+    llm_timeout_seconds: int = 60
 
-    # Whisper Configuration
-    WHISPER_MODEL: str = "large-v3"
-    WHISPER_DEVICE: str = "cpu"
-    WHISPER_COMPUTE_TYPE: str = "int8"
+    # Speech-to-Text
+    whisper_model: str = "large-v3"
+    whisper_device: Literal["cpu", "cuda", "mps"] = "cpu"
+    whisper_compute_type: str = "int8"
+    whisper_batch_size: int = 4
 
-    # Feature Flags
-    ENABLE_CLINICAL_SUGGESTIONS: bool = True
-    ENABLE_HUMAN_REVIEW: bool = True
-    ENABLE_AUDIT_LOGGING: bool = True
+    # Model Paths
+    model_checkpoint_dir: Path = field(default_factory=lambda: Path("models/checkpoints"))
+    soap_model_path: Optional[str] = None  # If local, path to SOAP model
+    diarization_model: str = "pyannote/speaker-diarization-3.1"
 
-    # Application Settings
-    APP_NAME: str = "Medical Transcription API"
-    APP_VERSION: str = "1.0.0-mvp"
-    API_PREFIX: str = "/api"
-
-    # CORS (comma-separated string, will be parsed to list)
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
-    CORS_CREDENTIALS: bool = True
-    CORS_METHODS: str = "*"
-    CORS_HEADERS: str = "*"
-
-    # Logging
-    LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
-    LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-
-    # Workflow Settings
-    CHECKPOINT_DB_PATH: str = "storage/checkpoints.db"
-    MAX_WORKFLOW_RETRIES: int = 3
-    WORKFLOW_TIMEOUT_SECONDS: int = 300  # 5 minutes
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
-        extra = "ignore"
+    def __post_init__(self) -> None:
+        """Resolve model paths and validate configuration."""
+        if isinstance(self.model_checkpoint_dir, str):
+            self.model_checkpoint_dir = Path(self.model_checkpoint_dir)
+        self.model_checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
 
-# Global settings instance
-settings = Settings()
+@dataclass
+class DatabaseConfig:
+    """Database connection and pool configuration."""
+
+    url: str = "sqlite:///./medscribe.db"
+    echo: bool = False  # SQL logging
+    pool_size: int = 5
+    max_overflow: int = 10
+    pool_pre_ping: bool = True  # Test connections before using
+    echo_pool: bool = False
+
+
+@dataclass
+class StorageConfig:
+    """File storage configuration."""
+
+    backend: Literal["local", "s3", "gcs", "azure"] = "local"
+    base_dir: str = "storage"
+    max_file_size_mb: int = 500
+    allowed_extensions: list[str] = field(default_factory=lambda: [
+        "pdf", "docx", "txt", "jpg", "jpeg", "png", "tiff", "dicom", "dcm"
+    ])
+
+
+@dataclass
+class LoggingConfig:
+    """Logging configuration."""
+
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    log_file: Optional[str] = "app/logs/medscribe.log"
+    log_level_file: Optional[Literal["DEBUG", "INFO", "WARNING", "ERROR"]] = "DEBUG"
+
+
+@dataclass
+class FeatureConfig:
+    """Feature flags and feature-specific settings."""
+
+    enable_clinical_suggestions: bool = True
+    enable_human_review: bool = True
+    enable_audit_logging: bool = True
+    enable_performance_monitoring: bool = True
+    performance_log_threshold_ms: int = 100  # Log operations slower than this
+
+
+@dataclass
+class Settings:
+    """Complete application settings."""
+
+    # Environment
+    environment: Literal["development", "staging", "production"] = "development"
+    debug: bool = False
+    api_title: str = "MedScribe Medical Transcription API"
+    api_version: str = "1.0.0"
+
+    # Components
+    model: ModelConfig = field(default_factory=ModelConfig)
+    database: DatabaseConfig = field(default_factory=DatabaseConfig)
+    storage: StorageConfig = field(default_factory=StorageConfig)
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
+    features: FeatureConfig = field(default_factory=FeatureConfig)
+
+    # API Keys (from environment only, never in config file)
+    groq_api_key: Optional[str] = None
+    huggingface_token: Optional[str] = None
+    eleven_labs_api_key: Optional[str] = None
+
+    @classmethod
+    def from_yaml(cls, config_path: str | Path = "config.yaml") -> "Settings":
+        """Load settings from YAML config file, overridden by environment variables."""
+        config_path = Path(config_path)
+
+        if config_path.exists():
+            with open(config_path, "r") as f:
+                data = yaml.safe_load(f) or {}
+        else:
+            data = {}
+
+        # Load environment-specific overrides
+        settings_dict = cls._merge_with_env(data)
+
+        # Create nested config objects
+        model_config = ModelConfig(**settings_dict.get("model", {}))
+        db_config = DatabaseConfig(**settings_dict.get("database", {}))
+        storage_config = StorageConfig(**settings_dict.get("storage", {}))
+        logging_config = LoggingConfig(**settings_dict.get("logging", {}))
+        features_config = FeatureConfig(**settings_dict.get("features", {}))
+
+        return cls(
+            model=model_config,
+            database=db_config,
+            storage=storage_config,
+            logging=logging_config,
+            features=features_config,
+            environment=os.getenv("ENVIRONMENT", settings_dict.get("environment", "development")),
+            debug=os.getenv("DEBUG", str(settings_dict.get("debug", False))).lower() == "true",
+            groq_api_key=os.getenv("GROQ_API_KEY"),
+            huggingface_token=os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN"),
+            eleven_labs_api_key=os.getenv("ELEVEN_LABS_API_KEY"),
+        )
+
+    @staticmethod
+    def _merge_with_env(config_data: dict) -> dict:
+        """Merge YAML config with environment variable overrides."""
+        # Database URL override
+        if db_url := os.getenv("DATABASE_URL"):
+            if "database" not in config_data:
+                config_data["database"] = {}
+            config_data["database"]["url"] = db_url
+
+        # Model overrides
+        if llm_model := os.getenv("LLM_MODEL"):
+            if "model" not in config_data:
+                config_data["model"] = {}
+            config_data["model"]["llm_model"] = llm_model
+
+        return config_data
+
+    def is_production(self) -> bool:
+        """Check if running in production."""
+        return self.environment == "production"
+
+
+# Global settings instance (lazy-loaded)
+_settings: Optional[Settings] = None
 
 
 def get_settings() -> Settings:
-    """Dependency injection function for FastAPI."""
-    return settings
+    """Get or create global settings instance."""
+    global _settings
+    if _settings is None:
+        _settings = Settings.from_yaml()
+    return _settings
 
 
-def get_database_url() -> str:
-    """Get database URL, fallback to environment variable."""
-    return settings.DATABASE_URL or os.getenv(
-        "DATABASE_URL",
-        "postgresql://postgres:postgres@localhost:5432/medscribe"
-    )
-
-
-def is_production() -> bool:
-    """Check if running in production environment."""
-    return settings.ENVIRONMENT.lower() == "production"
-
-
-def is_development() -> bool:
-    """Check if running in development environment."""
-    return settings.ENVIRONMENT.lower() == "development"
-
-
-def get_cors_origins() -> list[str]:
-    """Parse CORS origins from comma-separated string to list."""
-    if not settings.CORS_ORIGINS:
-        return []
-    return [origin.strip() for origin in settings.CORS_ORIGINS.split(",")]
-
-
-# Storage factory function
-def get_storage_backend():
-    """Get storage backend based on configuration."""
-    from app.storage.local import LocalStorage
-
-    if settings.STORAGE_BACKEND == "local":
-        return LocalStorage(base_dir=settings.STORAGE_BASE_DIR)
-    elif settings.STORAGE_BACKEND == "s3":
-        # Post-MVP: Import and return S3Storage
-        from app.storage.s3 import S3Storage
-        return S3Storage(
-            bucket=settings.S3_BUCKET,
-            region=settings.S3_REGION
-        )
-    else:
-        # Default to local storage
-        return LocalStorage(base_dir=settings.STORAGE_BASE_DIR)
+def reset_settings() -> None:
+    """Reset global settings (for testing)."""
+    global _settings
+    _settings = None

@@ -8,16 +8,17 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
 
-from app.config.settings import settings
+from app.config.settings import get_settings
 
+_db_cfg = get_settings().database
 
 # Create SQLAlchemy engine with connection pooling
 engine = create_engine(
-    settings.DATABASE_URL,
-    echo=settings.DB_ECHO,  # Log SQL queries in development
+    _db_cfg.url,
+    echo=_db_cfg.echo,  # Log SQL queries in development
     poolclass=QueuePool,
-    pool_size=settings.DB_POOL_SIZE,
-    max_overflow=settings.DB_MAX_OVERFLOW,
+    pool_size=_db_cfg.pool_size,
+    max_overflow=_db_cfg.max_overflow,
     pool_pre_ping=True,  # Verify connections before using
     pool_recycle=3600,  # Recycle connections after 1 hour
     connect_args={"connect_timeout": 3},  # Fail fast (3s) instead of OS default (~30s)
