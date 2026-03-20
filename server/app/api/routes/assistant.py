@@ -17,11 +17,12 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.api.dependencies import get_db
+from app.api.dependencies import get_db, get_session_service
 from app.services.embedding_service import get_embedding_service
 from app.database.repositories.record_repo import RecordRepository
 from app.models.llm import LLMClient
 from app.services.assistant_service import AssistantService
+from app.services.session_service import SessionService
 
 router = APIRouter(prefix="/api/session", tags=["assistant"])
 
@@ -66,11 +67,14 @@ async def query_assistant(
     session_id: str,
     body: AssistantQueryRequest,
     db=Depends(get_db),
+    session_service: SessionService = Depends(get_session_service),
 ):
     """
     Answer a clinical question about a patient using RAG.
 
     Retrieves grounded context from:
+    - Live in-memory session transcript (current session utterances)
+    - Live in-memory structured record (incrementally built during session)
     - clinical_embeddings table (is_final=True patient history)
     - chunk_embeddings table (all transcript/document chunks for the patient)
     - MedicalRecord structured_data (latest finalized records)
@@ -80,6 +84,14 @@ async def query_assistant(
     """
     if not body.question.strip():
         raise HTTPException(status_code=400, detail="Question must not be empty.")
+
+    # Pull live in-memory session data (available during an active session before
+    # the LangGraph pipeline runs and persists data to pgvector/DB).
+    live_session = session_service.get_session(session_id)
+    live_transcript = live_session.get("transcript") if live_session else None
+    live_structured_record = (
+        live_session.get("structured_record") if live_session else None
+    )
 
     embedding_svc = get_embedding_service(db)
     record_repo = RecordRepository(db)
@@ -95,6 +107,8 @@ async def query_assistant(
         patient_id=body.patient_id,
         session_id=session_id,
         question=body.question,
+        live_transcript=live_transcript,
+        live_structured_record=live_structured_record,
     )
 
     return AssistantQueryResponse(

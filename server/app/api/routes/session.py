@@ -7,6 +7,7 @@ Endpoints:
     POST /api/session/{session_id}/transcribe — Process a transcription turn
     POST /api/session/{session_id}/pipeline   — Run the full LangGraph pipeline
     POST /api/session/{session_id}/upload     — Upload documents + run OCR pipeline
+    GET  /api/session/{session_id}/record     — Get the session-level structured record
     GET  /api/session/{session_id}/documents  — List documents for a session
     GET  /api/session/{session_id}/queue      — Get modification review queue
     PATCH /api/session/{session_id}/queue/{item_id} — Update a queue item
@@ -36,6 +37,7 @@ from app.api.schemas import (
     QueueUpdateRequest,
 )
 from app.services.session_service import SessionService
+from app.core.pipeline_progress import pipeline_progress_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/session", tags=["session"])
@@ -77,6 +79,7 @@ async def run_pipeline(
     session_id: str,
     body: RunPipelineRequest,
     db=Depends(get_db),
+    service: SessionService = Depends(get_session_service),
 ):
     """
     Run the full 17-node LangGraph clinical pipeline.
@@ -96,11 +99,22 @@ async def run_pipeline(
         db_session=db,
     )
 
+    # Pull any OCR-processed documents already stored for this session so the
+    # ingest node can convert them into chunks/candidate_facts alongside the
+    # transcript segments.
+    stored_documents = service.get_documents(session_id)
+    if stored_documents:
+        logger.info(
+            "Injecting %d stored OCR document(s) into pipeline for session %s",
+            len(stored_documents), session_id,
+        )
+
     # Build initial state from request segments
     initial_state = engine.create_initial_state(
         session_id=body.session_id,
         patient_id=body.patient_id,
         doctor_id=body.doctor_id,
+        documents=stored_documents,
         inputs={
             "segments": [seg.model_dump() for seg in body.segments],
         },
@@ -135,7 +149,176 @@ async def run_pipeline(
     )
 
 
+@router.get("/{session_id}/pipeline/status")
+async def get_pipeline_status(session_id: str):
+    """
+    Return the current node-level execution status for the 17-node LangGraph
+    pipeline associated with *session_id*.
+
+    The frontend polls this endpoint (≈500 ms interval) while the pipeline is
+    running to drive the real-time progress sidebar.
+
+    Response shape
+    --------------
+    {
+        session_id: str,
+        status: "pending" | "running" | "completed" | "failed",
+        current_node: str | null,   # name of the last-completed node
+        started_at: str | null,     # ISO-8601
+        completed_at: str | null,
+        error: str | null,
+        nodes: [
+            {
+                name: str,
+                label: str,
+                phase: str,
+                description: str,
+                status: "pending" | "running" | "completed" | "failed" | "skipped",
+                started_at: str | null,
+                completed_at: str | null,
+                duration_ms: float | null,
+                detail: str | null
+            }
+        ]
+    }
+    """
+    data = pipeline_progress_store.get_dict(session_id)
+    if data is None:
+        return JSONResponse(status_code=404, content={"detail": f"No pipeline record for session '{session_id}'"})
+    return JSONResponse(content=data)
+
+
 # ── Document upload helpers ─────────────────────────────────────────────────
+
+
+# Demographic sub-fields returned by OCR field_extractor → path in demographics dict
+_DEMO_SUB: Dict[str, tuple] = {
+    "phone":                    ("contact_info",     "phone"),
+    "email":                    ("contact_info",     "email"),
+    "address":                  ("contact_info",     "address"),
+    "insurance_provider":       ("insurance",        "provider"),
+    "insurance_policy_number":  ("insurance",        "policy_number"),
+    "emergency_contact_name":   ("emergency_contact","name"),
+    "emergency_contact_phone":  ("emergency_contact","phone"),
+}
+
+# Direct demographic scalar fields that fill_record doesn't handle natively.
+# These are injected post-fill into demographics.{key}.
+_DEMO_DIRECT: Dict[str, str] = {
+    "age":    "age",
+    "gender": "gender",
+}
+
+# OCR field_name → fill_record fact_type where they differ
+_FIELD_REMAP: Dict[str, str] = {
+    "date_of_birth": "patient_dob",
+    "dob":           "patient_dob",
+    "sex":           "patient_sex",
+    "gender":        "patient_sex",
+    "mrn":           "patient_mrn",
+    "patient_id":    "patient_mrn",
+    "patient_name":  "patient_name",
+}
+
+
+def _ocr_fields_to_structured_record(
+    all_field_changes: List[Dict[str, Any]],
+    all_conflict_details: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Convert the flat OCR `field_changes` list into the hierarchical
+    `structured_record` consumed by DocumentViewPanel.
+
+    Uses the same `fill_structured_record_node` that the LangGraph
+    pipeline uses, so field mapping is consistent.
+    """
+    try:
+        from app.agents.nodes.fill_record import fill_structured_record_node
+    except Exception as exc:
+        logger.warning("Could not import fill_record: %s", exc)
+        return {}
+
+    candidate_facts: List[Dict[str, Any]] = []
+    demo_extra: Dict[str, Dict[str, str]] = {}   # sub-fields to inject after fill
+    demo_direct: Dict[str, str] = {}              # top-level demographic scalars (age, gender)
+
+    for fc in all_field_changes:
+        fn    = (fc.get("field_name") or "").lower().strip()
+        val   = fc.get("value", "")
+        conf  = float(fc.get("confidence") or 0.5)
+
+        if not fn or val == "" or val is None:
+            continue
+
+        if fn in _DEMO_SUB:
+            sub_section, sub_key = _DEMO_SUB[fn]
+            demo_extra.setdefault(sub_section, {})[sub_key] = str(val)
+            continue
+
+        if fn in _DEMO_DIRECT:
+            demo_direct[_DEMO_DIRECT[fn]] = str(val)
+            continue
+
+        fact_type = _FIELD_REMAP.get(fn, fn)
+        candidate_facts.append({
+            "fact_type": fact_type,
+            "value": val,
+            "confidence": conf,
+            "provenance": {"evidence": f"OCR extraction: {fn}"},
+        })
+
+    state: Dict[str, Any] = {
+        "candidate_facts": candidate_facts,
+        "patient_record_fields": {},
+    }
+    state = fill_structured_record_node(state)
+    record: Dict[str, Any] = state.get("structured_record") or {}
+
+    # Inject demographic sub-fields that fill_record doesn't handle
+    for sub_section, fields in demo_extra.items():
+        demo = record.setdefault("demographics", {})
+        target = demo.setdefault(sub_section, {})
+        for k, v in fields.items():
+            if not target.get(k):  # don't overwrite DB-seeded values
+                target[k] = v
+
+    # Inject direct demographic scalars (age, gender)
+    for dk, dv in demo_direct.items():
+        demo = record.setdefault("demographics", {})
+        if not demo.get(dk):
+            demo[dk] = dv
+
+    # Translate OCR conflict_details to _conflicts metadata
+    # Map OCR field names → dotted record paths that the frontend expects
+    _CONFLICT_PATH_MAP = {
+        "patient_name": "demographics.full_name",
+        "full_name": "demographics.full_name",
+        "date_of_birth": "demographics.date_of_birth",
+        "dob": "demographics.date_of_birth",
+        "sex": "demographics.sex",
+        "gender": "demographics.gender",
+        "mrn": "demographics.mrn",
+        "age": "demographics.age",
+        "blood_pressure": "vitals.blood_pressure",
+        "heart_rate": "vitals.heart_rate",
+        "respiratory_rate": "vitals.respiratory_rate",
+        "temperature": "vitals.temperature",
+        "spo2": "vitals.spo2",
+        "height": "vitals.height",
+        "weight": "vitals.weight",
+        "bmi": "vitals.bmi",
+    }
+    for c in all_conflict_details:
+        raw_fn = c.get("field_name", "")
+        dotted = _CONFLICT_PATH_MAP.get(raw_fn.lower(), raw_fn)
+        record.setdefault("_conflicts", []).append({
+            "field":           dotted,
+            "db_value":        c.get("existing_value", ""),
+            "extracted_value": c.get("extracted_value", ""),
+            "confidence":      0.5,
+        })
+
+    return record
 
 def _build_document_agent_summary(
     *,
@@ -154,11 +337,14 @@ def _build_document_agent_summary(
     # ── Deterministic summary (always works, fast) ──────────────────────
     n_fields = len(field_changes)
     n_conflicts = len(conflict_details)
-    conf_pct = round(confidence * 100)
+    # overall_confidence is already 0-100 scale (see extractor.py)
+    conf_pct = round(confidence, 1) if confidence <= 100 else round(confidence)
 
     field_bullets = ""
     for fc in field_changes[:10]:
-        val_preview = fc["value"][:80] + ("…" if len(fc["value"]) > 80 else "")
+        raw_v = fc["value"]
+        val_str = str(raw_v) if not isinstance(raw_v, str) else raw_v
+        val_preview = val_str[:80] + ("…" if len(val_str) > 80 else "")
         field_bullets += f"  • {fc['field_name']}: {val_preview}\n"
     if len(field_changes) > 10:
         field_bullets += f"  … and {len(field_changes) - 10} more fields\n"
@@ -168,7 +354,7 @@ def _build_document_agent_summary(
         conflict_bullets += f"  ⚠ {cd['field_name']}: {cd['message']}\n"
 
     summary = (
-        f"Analyzed "{filename}" — classified as {doc_type} "
+        f"Analyzed '{filename}' — classified as {doc_type} "
         f"({page_count} page{'s' if page_count != 1 else ''}, "
         f"{conf_pct}% confidence).\n\n"
     )
@@ -313,9 +499,18 @@ async def upload_documents(
             # Build structured field change list for agent message
             field_changes = []
             for ef in ocr_result.extracted_fields:
+                # Keep dict/list values as-is for proper JSON serialization;
+                # only stringify plain scalars so fill_record can unpack sub-fields.
+                raw_val = ef.value
+                if isinstance(raw_val, (dict, list)):
+                    val_out = raw_val
+                elif raw_val is not None:
+                    val_out = str(raw_val)
+                else:
+                    val_out = ""
                 field_changes.append({
                     "field_name": ef.field_name,
-                    "value": str(ef.value) if ef.value else "",
+                    "value": val_out,
                     "confidence": round(ef.confidence, 2),
                     "category": ef.category.value if hasattr(ef.category, "value") else str(ef.category),
                 })
@@ -380,10 +575,24 @@ async def upload_documents(
                 "error": str(e),
             })
 
+    # Build the per-upload structured record from OCR fields
+    all_fc = [fc for r in results if "error" not in r for fc in r.get("field_changes", [])]
+    all_cd = [cd for r in results if "error" not in r for cd in r.get("conflict_details", [])]
+    ocr_record = _ocr_fields_to_structured_record(all_fc, all_cd) or None
+
+    # Merge into the session-level consolidated record (in-memory, non-blocking)
+    if ocr_record:
+        service.merge_structured_record(session_id, ocr_record, source="ocr")
+
+    # Return the full merged session record so the frontend always sees
+    # the cumulative state across all uploads + transcription
+    merged_record = service.get_structured_record(session_id) or ocr_record
+
     return JSONResponse(content={
         "session_id": session_id,
-        "uploaded": len(results),
-        "files": results,
+        "uploaded":   len(results),
+        "files":      results,
+        "structured_record": merged_record,
     })
 
 
@@ -435,4 +644,22 @@ async def update_queue_item(
             content={"error": f"Queue item {item_id} not found"},
         )
     return JSONResponse(content=updated)
+
+
+@router.get("/{session_id}/record")
+async def get_session_record(
+    session_id: str,
+    service: SessionService = Depends(get_session_service),
+):
+    """Return the session-level consolidated structured record."""
+    record = service.get_structured_record(session_id)
+    if record is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Session not found or has no record"},
+        )
+    return JSONResponse(content={
+        "session_id": session_id,
+        "structured_record": record,
+    })
 

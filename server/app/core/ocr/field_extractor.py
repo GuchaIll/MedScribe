@@ -179,26 +179,80 @@ def _extract_via_llm(
     hint = _EXTRACTION_HINTS.get(doc_type, "Extract all medical information.")
     categories = [c.value for c in FieldCategory]
 
-    prompt = f"""Extract structured medical data from this document.
+    prompt = f"""Extract all structured medical data from this clinical document.
 
 Document type: {doc_type.value}
 Extraction focus: {hint}
 
-Return a JSON array of extracted fields. Each field must have:
-- "field_name": descriptive name (e.g., "hemoglobin", "patient_name")
-- "value": the extracted value (string or number)
+Return a JSON array. Each element must have:
+- "field_name": snake_case name
+- "value": extracted value (string, number, or nested object)
 - "category": one of {json.dumps(categories)}
-- "confidence": 0.0-1.0 based on clarity and completeness
-- "source_span": the exact text fragment this was extracted from (max 100 chars)
-- "metadata": object with any additional context (e.g., {{"unit": "mg/dL", "reference_range": "4.0-6.0"}})
+- "confidence": 0.0–1.0
+- "source_span": exact verbatim text fragment (max 120 chars)
+- "metadata": additional context object
 
-Rules:
-- Extract ALL clinical entities: medications, allergies, diagnoses, lab values, vitals, procedures, demographics
-- For medications: include dose, frequency, route in metadata
-- For lab values: include unit and reference range in metadata
-- For demographics: include DOB, sex, age, MRN if found
-- Set confidence lower for unclear/partially readable values
-- Return ONLY a JSON array, no commentary
+MANDATORY — extract ALL of the following when present:
+
+DEMOGRAPHICS (field_name examples):
+  patient_name, date_of_birth, sex, mrn, phone, email, address,
+  insurance_provider, insurance_policy_number, emergency_contact_name
+
+CHIEF COMPLAINT:
+  chief_complaint — value: {{free_text, onset, duration, severity, location}}
+
+HPI (one object per symptom):
+  hpi_event — value: {{symptom, onset, progression, triggers, relieving_factors,
+                        associated_symptoms, timeline}}
+
+PAST MEDICAL HISTORY:
+  chronic_condition — value: {{name, icd10_code, onset_year, status}}
+    *** CRITICAL: extract EVERY chronic disease listed: hypertension, diabetes,
+        obesity, hyperlipidemia, COPD, asthma, CAD, CKD, hypothyroidism, etc. ***
+  surgery — value: {{name, date}}
+  hospitalization — value: {{reason, date, duration}}
+
+MEDICATIONS (extract EVERY drug):
+  medication — value: {{name, dose, route, frequency, indication}}
+  *** Include OTC drugs, supplements, inhalers, patches, injections ***
+
+ALLERGIES (safety-critical — extract ALL):
+  allergy — value: {{substance, reaction, severity, category}}
+
+FAMILY HISTORY:
+  family_history — value: {{member, conditions: [...], alive, cause_of_death}}
+
+SOCIAL HISTORY:
+  social_history — value: {{tobacco, alcohol, drug_use, occupation, exercise, diet}}
+
+REVIEW OF SYSTEMS (one entry per system):
+  ros_finding — value: {{system, finding}}
+
+VITALS (one entry per measurement):
+  vital — value: {{type, value, unit}}
+  *** heart_rate, respiratory_rate, temperature, spo2 are REQUIRED if present ***
+
+LABS (comprehensive — include ALL results):
+  lab_result — value: {{test, value, unit, reference_range, abnormal, date}}
+  *** LDL, triglycerides, LFTs, CBC, CMP components, vitamin D, B12, PSA, etc. ***
+
+PHYSICAL EXAM:
+  physical_exam_finding — value: {{system, finding}}
+
+PROBLEM LIST:
+  problem — value: {{name, status}}
+
+ASSESSMENT & PLAN:
+  assessment — value: {{likely_diagnoses: [...], differential_diagnoses: [...],
+                         clinical_reasoning}}
+  plan — value: {{medications_prescribed: [...], tests_ordered: [...],
+                   lifestyle_recommendations: [...], follow_up, referrals: [...]}}
+
+Post-extraction rules:
+- Deduplicate: if the same entity appears twice with different detail, merge into one entry with the richer data
+- Normalize units: convert all heights to cm, weights to kg if both forms present; use canonical lab units (mg/dL, mmol/L, etc.)
+- Do NOT include noise tokens (single words, punctuation fragments, non-medical text)
+- Return ONLY a JSON array, no prose
 
 Document text:
 ---

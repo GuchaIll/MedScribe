@@ -16,6 +16,7 @@ from pathlib import Path
 from app.agents.graph import build_graph
 from app.agents.config import create_default_context
 from app.agents.state import GraphState
+from app.core.pipeline_progress import pipeline_progress_store
 
 
 class WorkflowEngine:
@@ -141,35 +142,115 @@ class WorkflowEngine:
         thread_id: Optional[str] = None
     ) -> GraphState:
         """
-        Execute workflow asynchronously.
-
-        Args:
-            state: Initial or current state
-            thread_id: Thread ID for checkpointing
-
-        Returns:
-            Final state after execution
+        Execute workflow asynchronously, streaming node-level events to the
+        pipeline progress store so the /pipeline/status endpoint can surface
+        real-time progress to the React frontend.
         """
-        config = self._get_config(thread_id or state["session_id"])
+        session_id = state.get("session_id", thread_id or "unknown")
+        config = self._get_config(thread_id or session_id)
+
+        # Initialise progress tracking for this session
+        pipeline_progress_store.init_pipeline(session_id)
 
         try:
-            # Run invoke in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             final_state = await loop.run_in_executor(
                 None,
-                lambda: self.graph.invoke(state, config=config)
+                lambda: self._stream_with_progress(state, config, session_id),
             )
             return final_state
         except Exception as e:
+            pipeline_progress_store.mark_pipeline_failed(session_id, str(e))
             state["controls"]["trace_log"].append({
                 "node": "workflow_engine",
                 "action": "error",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             })
             state["flags"]["processing_error"] = True
             state["message"] = f"Workflow execution failed: {str(e)}"
             raise
+
+    # ── Streaming execution with per-node progress updates ──────────────────
+
+    def _stream_with_progress(
+        self,
+        state: GraphState,
+        config: Dict[str, Any],
+        session_id: str,
+    ) -> GraphState:
+        """
+        Run the graph via graph.stream() so we get per-node events. Each event
+        immediately updates the progress store; the status endpoint reads this
+        while the pipeline is executing in the background thread.
+        """
+        # Working state — updated by applying each node's state delta.
+        final_state: Dict[str, Any] = dict(state)
+
+        try:
+            for event in self.graph.stream(state, config=config, stream_mode="updates"):
+                for node_name, updates in event.items():
+                    # LangGraph emits __end__ and other internal keys — skip them.
+                    if node_name.startswith("__") or not isinstance(updates, dict):
+                        continue
+
+                    # Merge the node's state delta into our working state.
+                    final_state.update(updates)
+
+                    # Update the progress store.
+                    detail = self._extract_node_detail(node_name, updates)
+                    pipeline_progress_store.mark_node_completed(
+                        session_id, node_name, detail=detail
+                    )
+
+            # Prefer the checkpointed final state when available — it is the
+            # canonical LangGraph-merged result across all node outputs.
+            if self.enable_checkpointing:
+                canonical = self.get_state(session_id)
+                if canonical:
+                    final_state = dict(canonical)
+
+            pipeline_progress_store.mark_pipeline_completed(session_id)
+            return final_state  # type: ignore[return-value]
+
+        except Exception:
+            raise  # caller handles progress failure logging
+
+    @staticmethod
+    def _extract_node_detail(node_name: str, updates: Dict[str, Any]) -> Optional[str]:
+        """Extract a brief human-readable summary from a node's state update."""
+        if node_name == "load_patient_context":
+            fields = updates.get("patient_record_fields") or {}
+            visits = fields.get("visit_count", 0)
+            return f"{visits} prior visit{'s' if visits != 1 else ''} loaded" if visits else "new patient"
+        if node_name == "extract_candidates":
+            count = len(updates.get("candidate_facts") or [])
+            return f"{count} clinical fact{'s' if count != 1 else ''} extracted" if count else None
+        if node_name == "retrieve_evidence":
+            count = len(updates.get("evidence_map") or {})
+            return f"{count} evidence item{'s' if count != 1 else ''} grounded" if count else None
+        if node_name == "clinical_suggestions":
+            sugg = updates.get("clinical_suggestions") or {}
+            alerts = len(sugg.get("alerts") or [])
+            return f"{alerts} drug interaction alert{'s' if alerts != 1 else ''}" if alerts else "no alerts found"
+        if node_name == "validate_and_score":
+            report = updates.get("validation_report") or {}
+            errors = len(report.get("schema_errors") or [])
+            return f"{errors} schema error{'s' if errors != 1 else ''} — repair queued" if errors else "validation passed"
+        if node_name == "repair":
+            controls = updates.get("controls") or {}
+            attempts = (controls.get("attempts") or {}).get("repair", 1)
+            return f"repair attempt {attempts}/3"
+        if node_name == "conflict_resolution":
+            report = updates.get("conflict_report") or {}
+            resolved = len(report.get("resolved") or [])
+            unresolved = len(report.get("unresolved") or [])
+            if unresolved:
+                return f"{resolved} resolved, {unresolved} unresolved — review flagged"
+            return f"{resolved} conflict{'s' if resolved != 1 else ''} resolved" if resolved else "no conflicts"
+        if node_name == "persist_results":
+            return "record + embeddings written to PostgreSQL"
+        return None
 
     async def stream_events(
         self,
