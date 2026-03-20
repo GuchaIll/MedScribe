@@ -6,10 +6,13 @@ A Real-Time, LangGraph-Orchestrated Medical Intelligence System for Automated Cl
 
 ## Demo
 
-| OCR Document Intelligence | Agent Query |
-|:-:|:-:|
-| [![OCR Pipeline Demo](examples/thumbnail-ocr.svg)](examples/OCR.mp4) | [![Agent Query Demo](examples/thumbnail-agent-query.svg)](examples/Agent%20Query.mp4) |
-| 9-stage OCR pipeline — PDF/image ingestion, deskew, layout detection, structured field extraction | Voice-triggered assistant query with LangGraph clinical reasoning and decision support |
+**OCR Document Intelligence** — 9-stage pipeline: PDF/image ingestion, deskew, layout detection, structured field extraction
+
+<video src="https://github.com/user-attachments/assets/07d598fc-aa8a-4a00-932c-156e4e08d6d4" controls poster="examples/thumbnail-ocr.png" width="100%"></video>
+
+**Agent Query** — Voice-triggered assistant with LangGraph clinical reasoning and decision support
+
+<video src="https://github.com/user-attachments/assets/9d75ba9a-ab37-4bcf-937e-ec9ca55ee5d3" controls poster="examples/thumbnail-agent-query.png" width="100%"></video>
 
 ---
 
