@@ -210,11 +210,26 @@ def retrieve_evidence_node(state: GraphState, ctx: AgentContext) -> GraphState:
         and session_id
     )
 
+    # Check for hybrid retrieval service on context (RAG enhancement)
+    use_hybrid = (
+        use_vector_search
+        and hasattr(ctx, "hybrid_retrieval_service")
+        and ctx.hybrid_retrieval_service is not None
+    )
+
     evidence_map: Dict[str, List[EvidenceItem]] = {}
     facts_with_evidence = 0
     facts_without_evidence = 0
 
-    if use_vector_search:
+    if use_hybrid:
+        logger.info("[Evidence] Using hybrid retrieval (dense + sparse)")
+        evidence_map, facts_with_evidence, facts_without_evidence = (
+            _retrieve_via_hybrid(
+                candidate_facts, chunks, conversation_log,
+                session_id, ctx
+            )
+        )
+    elif use_vector_search:
         logger.info("[Evidence] Using pgvector cosine search")
         evidence_map, facts_with_evidence, facts_without_evidence = (
             _retrieve_via_embeddings(
@@ -232,10 +247,11 @@ def retrieve_evidence_node(state: GraphState, ctx: AgentContext) -> GraphState:
     state['evidence_map'] = evidence_map
 
     # Log the operation
+    strategy_name = 'hybrid' if use_hybrid else ('pgvector' if use_vector_search else 'fuzzy_match')
     state['controls']['trace_log'].append({
         'node': 'retrieve_evidence',
         'action': 'retrieved',
-        'strategy': 'pgvector' if use_vector_search else 'fuzzy_match',
+        'strategy': strategy_name,
         'total_facts': len(candidate_facts),
         'facts_with_evidence': facts_with_evidence,
         'facts_without_evidence': facts_without_evidence,
@@ -244,6 +260,77 @@ def retrieve_evidence_node(state: GraphState, ctx: AgentContext) -> GraphState:
     })
 
     return state
+
+
+def _retrieve_via_hybrid(
+    candidate_facts: List[CandidateFact],
+    chunks: List[ChunkArtifact],
+    conversation_log: list,
+    session_id: str,
+    ctx: AgentContext,
+) -> tuple:
+    """Layer 2 -- hybrid retrieval (dense + sparse) for evidence."""
+    evidence_map: Dict[str, List[EvidenceItem]] = {}
+    facts_with = 0
+    facts_without = 0
+
+    hybrid_service = ctx.hybrid_retrieval_service
+
+    for fact in candidate_facts:
+        fact_id = fact['fact_id']
+        search_text = fact_to_search_string(fact)
+
+        try:
+            matches = hybrid_service.search_chunks(
+                session_id=session_id,
+                query=search_text,
+                top_k=5,
+                dense_threshold=0.45,
+            )
+
+            if matches:
+                evidence_items = []
+                for match in matches:
+                    snippet = match.get('chunk_text', '')
+                    if len(snippet) > 200:
+                        snippet = snippet[:197] + "..."
+
+                    evidence_item: EvidenceItem = {
+                        'source_id': match.get('chunk_id', ''),
+                        'source_type': match.get('source_type', 'unknown'),
+                        'snippet': snippet,
+                        'confidence': match.get('rrf_score', match.get('similarity', 0.0)),
+                        'metadata': {
+                            'chunk_id': match.get('chunk_id', ''),
+                            'full_text': match.get('chunk_text', ''),
+                            'start': match.get('start_time'),
+                            'end': match.get('end_time'),
+                            'retrieval': 'hybrid',
+                            'rrf_score': match.get('rrf_score'),
+                        }
+                    }
+                    evidence_items.append(evidence_item)
+
+                evidence_map[fact_id] = evidence_items
+                facts_with += 1
+            else:
+                evidence_map[fact_id] = _fallback_evidence(conversation_log)
+                facts_without += 1
+
+        except Exception as e:
+            logger.warning(f"[Evidence] Hybrid search failed for fact {fact_id}: {e}")
+            # Fall back to fuzzy matching for this fact
+            fm_matches = find_matching_chunks(fact, chunks, threshold=FUZZY_MATCH_THRESHOLD)
+            if fm_matches:
+                evidence_map[fact_id] = [
+                    create_evidence_item(chunk, sim) for chunk, sim in fm_matches[:5]
+                ]
+                facts_with += 1
+            else:
+                evidence_map[fact_id] = _fallback_evidence(conversation_log)
+                facts_without += 1
+
+    return evidence_map, facts_with, facts_without
 
 
 def _retrieve_via_embeddings(

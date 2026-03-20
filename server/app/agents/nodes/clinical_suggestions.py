@@ -1,21 +1,24 @@
 """
-Agent G — Clinical Safety Checker.
+Agent G -- Clinical Safety Checker (with ToolUniverse integration).
 
 Purpose: Detect allergy conflicts, drug interactions, contraindications.
-Inputs:  structured_record, patient_id
-Outputs: clinical_suggestions
-Tools:   patient_lookup (via AgentContext), clinical_engine (via AgentContext)
+         Enhanced with ToolUniverse for lab interpretation, dosage checks,
+         and comprehensive tool-backed validation.
+Inputs:  structured_record, patient_id, diagnostic_reasoning (optional)
+Outputs: clinical_suggestions (enriched with tool results)
+Tools:   patient_lookup (via AgentContext), clinical_engine (via AgentContext),
+         ToolUniverseService (via AgentContext)
 Guardrail: Never suppress a critical alert.
 
 Supports two call signatures via ``make_node()``:
-    clinical_suggestions_node(state)           — legacy (self-wires deps)
-    clinical_suggestions_node(state, ctx)      — preferred (injected deps)
+    clinical_suggestions_node(state)           -- legacy (self-wires deps)
+    clinical_suggestions_node(state, ctx)      -- preferred (injected deps)
 """
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..state import GraphState
 
@@ -33,11 +36,16 @@ def clinical_suggestions_node(
     When ``ctx`` is provided (via ``make_node``), uses injected services.
     Falls back to direct imports when running without AgentContext for
     backward compatibility with ``langgraph_runner.py``.
+
+    Enhancement: when ToolUniverseService is available via ctx, runs
+    additional tool-backed checks (lab interpretation, dosage validation)
+    and merges results into the suggestions output.
     """
     state = {**state}  # shallow copy to avoid mutating upstream
 
     patient_id = state.get("patient_id")
     structured_record = state.get("structured_record", {})
+    diagnostic_reasoning = state.get("diagnostic_reasoning") or {}
     trace = state.setdefault("controls", {}).setdefault("trace_log", [])
 
     trace.append({
@@ -46,7 +54,7 @@ def clinical_suggestions_node(
         "timestamp": datetime.now().isoformat(),
     })
 
-    # ── Guard: required inputs ──────────────────────────────────────────────
+    # -- Guard: required inputs -------------------------------------------
     if not patient_id:
         trace.append({
             "node": "clinical_suggestions",
@@ -66,7 +74,7 @@ def clinical_suggestions_node(
         return state
 
     try:
-        # ── Resolve services (prefer context, fallback to legacy) ───────────
+        # -- Resolve services (prefer context, fallback to legacy) ---------
         patient_history = _get_patient_history(patient_id, ctx)
 
         if not patient_history or not patient_history.get("found"):
@@ -83,6 +91,39 @@ def clinical_suggestions_node(
             current_record=structured_record,
             patient_history=patient_history,
         )
+
+        # -- ToolUniverse enrichment ---------------------------------------
+        tool_results = _run_tool_universe_checks(
+            ctx, structured_record, patient_history, diagnostic_reasoning,
+        )
+        if tool_results:
+            suggestions["tool_universe"] = tool_results
+            # Merge critical lab values into risk consideration
+            if tool_results.get("lab_interpretation", {}).get("critical_values"):
+                suggestions.setdefault("lab_critical_values",
+                                       tool_results["lab_interpretation"]["critical_values"])
+            # Merge dosage alerts
+            if tool_results.get("dosage_check", {}).get("dosage_alerts"):
+                suggestions.setdefault("dosage_alerts",
+                                       tool_results["dosage_check"]["dosage_alerts"])
+            # Escalate risk if tools found critical issues
+            tool_risk = tool_results.get("overall_risk_level", "low")
+            if tool_risk in ("critical", "high"):
+                current_risk = suggestions.get("risk_level", "low")
+                risk_order = {"critical": 4, "high": 3, "moderate": 2, "low": 1, "unknown": 0}
+                if risk_order.get(tool_risk, 0) > risk_order.get(current_risk, 0):
+                    suggestions["risk_level"] = tool_risk
+
+        # -- Integrate diagnostic reasoning risk flags ---------------------
+        if diagnostic_reasoning.get("risk_flags"):
+            existing_flags = suggestions.get("risk_flags", [])
+            for rf in diagnostic_reasoning["risk_flags"]:
+                existing_flags.append({
+                    "flag": rf.get("flag", ""),
+                    "severity": rf.get("severity", "moderate"),
+                    "source": "diagnostic_reasoning",
+                })
+            suggestions["risk_flags"] = existing_flags
 
         state["clinical_suggestions"] = suggestions
 
@@ -103,6 +144,7 @@ def clinical_suggestions_node(
             "allergy_alerts": len(suggestions.get("allergy_alerts", [])),
             "drug_interactions": len(suggestions.get("drug_interactions", [])),
             "contraindications": len(suggestions.get("contraindications", [])),
+            "tool_universe_used": bool(tool_results),
             "timestamp": datetime.now().isoformat(),
         })
 
@@ -113,7 +155,7 @@ def clinical_suggestions_node(
             "error": str(e),
             "timestamp": datetime.now().isoformat(),
         })
-        # Fail open — empty suggestions, don't block the pipeline
+        # Fail open -- empty suggestions, don't block the pipeline
         state["clinical_suggestions"] = {
             "allergy_alerts": [],
             "drug_interactions": [],
@@ -126,7 +168,7 @@ def clinical_suggestions_node(
     return state
 
 
-# ── Private helpers ─────────────────────────────────────────────────────────
+# -- Private helpers ----------------------------------------------------------
 
 def _get_patient_history(
     patient_id: str,
@@ -155,3 +197,74 @@ def _get_engine(ctx: Optional[AgentContext]):
 
     from app.core.clinical_suggestions import get_clinical_suggestion_engine
     return get_clinical_suggestion_engine()
+
+
+def _run_tool_universe_checks(
+    ctx: Optional[Any],
+    record: Dict[str, Any],
+    patient_history: Dict[str, Any],
+    diagnostic_reasoning: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """
+    Run ToolUniverse tool-backed checks if the service is available.
+
+    Returns None when ToolUniverseService is not wired up.
+    """
+    tool_svc = None
+    if ctx and hasattr(ctx, "tool_universe_service") and ctx.tool_universe_service:
+        tool_svc = ctx.tool_universe_service
+    else:
+        # Try lazy import
+        try:
+            from app.agents.tools.tool_universe import get_tool_universe_service
+            tool_svc = get_tool_universe_service()
+        except Exception:
+            return None
+
+    if tool_svc is None:
+        return None
+
+    # Build patient params from record
+    demo = record.get("demographics") or {}
+    vitals = record.get("vitals") or {}
+    patient_params: Dict[str, Any] = {}
+    if demo.get("age"):
+        try:
+            patient_params["age"] = int(demo["age"])
+        except (ValueError, TypeError):
+            pass
+    if demo.get("sex"):
+        patient_params["sex"] = demo["sex"]
+    if isinstance(vitals, dict):
+        if vitals.get("weight"):
+            patient_params["weight_kg"] = vitals["weight"]
+
+    # Gather conditions list from diagnoses + chronic conditions
+    conditions: List[str] = []
+    for dx in record.get("diagnoses", []):
+        desc = dx.get("description") or dx.get("name", "")
+        if desc:
+            conditions.append(desc)
+    pmh = record.get("past_medical_history") or {}
+    for cc in pmh.get("chronic_conditions", []):
+        name = cc.get("name", "")
+        if name and name not in conditions:
+            conditions.append(name)
+
+    # Add conditions from diagnostic reasoning
+    for dx in diagnostic_reasoning.get("top_diagnoses", []):
+        dx_name = dx.get("name", "")
+        if dx_name and dx_name not in conditions:
+            conditions.append(dx_name)
+
+    try:
+        return tool_svc.query_comprehensive(
+            medications=record.get("medications", []),
+            allergies=record.get("allergies") or patient_history.get("allergies", []),
+            labs=record.get("labs", []),
+            conditions=conditions,
+            patient_params=patient_params if patient_params else None,
+            patient_history=patient_history,
+        )
+    except Exception:
+        return None

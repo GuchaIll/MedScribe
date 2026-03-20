@@ -62,6 +62,12 @@ class AgentContext:
     session_repo: Optional[SessionRepository] = None
     db_session_factory: Optional[Callable[[], DBSession]] = None
 
+    # ── RAG enhancement services ────────────────────────────────────────────
+    hybrid_retrieval_service: Optional[Any] = None  # HybridRetrievalService
+
+    # ── Diagnostic intelligence ─────────────────────────────────────────────
+    tool_universe_service: Optional[Any] = None  # ToolUniverseService
+
     # ── Tuning knobs ────────────────────────────────────────────────────────
     max_llm_calls: int = 30
     grounding_threshold: float = 0.65
@@ -116,10 +122,21 @@ def create_default_context(
     record_repo = None
     session_repo = None
     db_session_factory = None
+    hybrid_retrieval_service = None
+    tool_universe_service = None
 
     try:
         from app.core.clinical_suggestions import get_clinical_suggestion_engine
         clinical_engine = get_clinical_suggestion_engine()
+    except Exception:
+        pass
+
+    # Wire up ToolUniverseService (uses clinical_engine if available)
+    try:
+        from app.agents.tools.tool_universe import get_tool_universe_service
+        tool_universe_service = get_tool_universe_service(
+            clinical_engine=clinical_engine
+        )
     except Exception:
         pass
 
@@ -165,6 +182,18 @@ def create_default_context(
             except Exception:
                 pass
 
+            # Wire up hybrid retrieval if embedding service is available
+            hybrid_retrieval_service = None
+            if embedding_service is not None:
+                try:
+                    from app.services.hybrid_retrieval import HybridRetrievalService
+                    hybrid_retrieval_service = HybridRetrievalService(
+                        db=db_session,
+                        embedding_service=embedding_service,
+                    )
+                except Exception:
+                    pass
+
             # Factory for fresh sessions (e.g. persist_results commits independently)
             try:
                 from app.database.session import SessionLocal
@@ -181,6 +210,8 @@ def create_default_context(
         record_repo=record_repo,
         session_repo=session_repo,
         db_session_factory=db_session_factory,
+        hybrid_retrieval_service=hybrid_retrieval_service if db_session is not None else None,
+        tool_universe_service=tool_universe_service,
         max_llm_calls=30,
         grounding_threshold=0.65,
         persistence_floor=0.60,

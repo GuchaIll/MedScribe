@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>{{title}}</title>
+  </head>
+  <body>
+    <header class="report-header">
+      <div>
+        <h1>{{title}}</h1>
+        <div class="meta">
+          <span>Session ID: {{session_id}}</span>
+          <span>Patient ID: {{patient_id}}</span>
+          <span>Doctor ID: {{doctor_id}}</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="card">
+      <h2>Session Summary</h2>
+      <pre>{{session_summary}}</pre>
+    </section>
+
+    <section class="card">
+      <h2>Clinical Note</h2>
+      <pre>{{clinical_note}}</pre>
+    </section>
+
+    <section class="card">
+      <h2>Structured Record</h2>
+      <pre>{{structured_record}}</pre>
+    </section>
+
+    <section class="card">
+      <h2>Validation Report</h2>
+      <pre>{{validation_report}}</pre>
+    </section>
+
+    <section class="card">
+      <h2>Conflict Report</h2>
+      <pre>{{conflict_report}}</pre>
+    </section>
+  </body>
+</html>

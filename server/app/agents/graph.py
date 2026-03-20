@@ -10,7 +10,7 @@ rather than importing them directly.
 
 Pipeline topology (with DB integration):
   greeting → load_patient_context → ingest → clean → normalize → segment →
-  extract → evidence → fill_record → clinical_suggestions → validate →
+  extract → diagnostic_reasoning → evidence → fill_record → clinical_suggestions → validate →
   [repair loop | conflict_resolution | human_review_gate] →
   generate_note → package_outputs → persist_results → END
 """
@@ -29,6 +29,7 @@ from .nodes.clean import clean_transcription_node
 from .nodes.normalize import normalize_transcript_node
 from .nodes.segment import segment_and_chunk_node
 from .nodes.extract import extract_candidates_node
+from .nodes.diagnostic_reasoning import diagnostic_reasoning_node
 from .nodes.evidence import retrieve_evidence_node
 from .nodes.fill_record import fill_structured_record_node
 from .nodes.clinical_suggestions import clinical_suggestions_node
@@ -113,6 +114,7 @@ def build_graph(
         "normalize_transcript":   normalize_transcript_node,
         "segment_and_chunk":      segment_and_chunk_node,
         "extract_candidates":     extract_candidates_node,
+        "diagnostic_reasoning":   diagnostic_reasoning_node,
         "retrieve_evidence":      retrieve_evidence_node,
         "fill_structured_record": fill_structured_record_node,
         "clinical_suggestions":   clinical_suggestions_node,
@@ -136,7 +138,8 @@ def build_graph(
     graph.add_edge("clean_transcription", "normalize_transcript")
     graph.add_edge("normalize_transcript", "segment_and_chunk")
     graph.add_edge("segment_and_chunk", "extract_candidates")
-    graph.add_edge("extract_candidates", "retrieve_evidence")
+    graph.add_edge("extract_candidates", "diagnostic_reasoning")
+    graph.add_edge("diagnostic_reasoning", "retrieve_evidence")
     graph.add_edge("retrieve_evidence", "fill_structured_record")
     graph.add_edge("fill_structured_record", "clinical_suggestions")
     graph.add_edge("clinical_suggestions", "validate_and_score")

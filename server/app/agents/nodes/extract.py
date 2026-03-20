@@ -149,20 +149,85 @@ def _call_extraction_llm(text: str, chunks: List[Dict], retry_count: int, patien
 
 CRITICAL: Return ONLY valid JSON. No explanations, no markdown, just JSON.
 
-Extract these entity types:
-- patient_demographics: name, dob, age, sex, mrn
-- allergy: substance, reaction, severity
-- medication: name, dose, route, frequency, start_date
-- diagnosis: code, description (ICD-10 if available)
-- vital: type (BP, HR, Temp, RR, O2), value, unit, timestamp
-- lab_result: test_name, value, unit, reference_range, date
-- procedure: name, date, location
-- followup: description, timeframe
+Extract ALL of these entity types (omit types not present, but be thorough):
 
-For EACH entity, provide:
+DEMOGRAPHICS (scalar — one value per patient):
+- patient_name:       value: "Full Name"
+- patient_dob:        value: "YYYY-MM-DD"
+- patient_sex:        value: "Male" | "Female" | "Other"
+- patient_mrn:        value: "MRN string"
+
+CHIEF COMPLAINT (mandatory for every visit):
+- chief_complaint:    value: {free_text, onset, duration, severity (e.g. "7/10"), location}
+
+HISTORY OF PRESENT ILLNESS (one entry per symptom/event):
+- hpi_event:          value: {symptom, onset, progression, triggers, relieving_factors,
+                               associated_symptoms, timeline, timestamp}
+
+PAST MEDICAL HISTORY:
+- chronic_condition:  value: {name, icd10_code, onset_year, status}
+  Examples: hypertension, diabetes type 2, obesity, hyperlipidemia, COPD
+- hospitalization:    value: {reason, date, facility, duration}
+- surgery:            value: {name, date, facility}
+
+MEDICATIONS (list every drug mentioned):
+- medication:         value: {name, dose, route, frequency, indication, start_date}
+  Examples: "Metformin 500mg BID PO", "Lisinopril 10mg daily"
+
+ALLERGIES (safety-critical — extract ALL):
+- allergy:            value: {substance, reaction, severity ("mild"|"moderate"|"anaphylaxis"),
+                               category ("drug"|"food"|"environmental")}
+
+FAMILY HISTORY:
+- family_history:     value: {member ("mother"|"father"|"sibling"|"child"|"grandparent"),
+                               conditions: [...], alive: true|false,
+                               age_at_death, cause_of_death}
+
+SOCIAL HISTORY:
+- social_history:     value: {tobacco, alcohol, drug_use, occupation, exercise, diet}
+  OR: {category: "tobacco", value: "20 pack-years, quit 2010"}
+
+REVIEW OF SYSTEMS (one entry, dict keyed by system):
+- ros_finding:        value: {system ("cardiovascular"|"respiratory"|"neurological"|
+                                       "gastrointestinal"|"musculoskeletal"|"dermatological"|
+                                       "psychiatric"|"endocrine"|"genitourinary"|"hematologic"),
+                               finding: "chest pain, palpitations"}
+
+VITALS (one entry per measurement):
+- vital:              value: {type ("blood_pressure"|"heart_rate"|"respiratory_rate"|
+                                     "temperature"|"spo2"|"height"|"weight"|"bmi"),
+                               value: "120/80", unit: "mmHg"}
+
+LABS (one entry per test with ALL details):
+- lab_result:         value: {test, value, unit, reference_range, date, abnormal: true|false}
+  Include: cholesterol, LDL, HDL, triglycerides, glucose, HbA1c, creatinine, BUN,
+           sodium, potassium, AST, ALT, ALP, CBC components, TSH, vitamin D, B12
+
+PHYSICAL EXAM:
+- physical_exam_finding: value: {system ("general"|"cardiovascular"|"respiratory"|
+                                          "neurological"|"abdomen"|"musculoskeletal"|
+                                          "skin"|"head_neck"),
+                                   finding: "Regular rhythm, no murmurs"}
+
+DIAGNOSES (ICD-10 coded when possible):
+- diagnosis:          value: {code, description}
+
+PROBLEM LIST (active issues):
+- problem:            value: {name, status ("active"|"chronic"|"resolved")}
+
+RISK FACTORS:
+- risk_factor:        value: {name, severity ("low"|"moderate"|"high"), source}
+
+ASSESSMENT & PLAN:
+- assessment:         value: {likely_diagnoses: [...], differential_diagnoses: [...],
+                               clinical_reasoning}
+- plan:               value: {medications_prescribed: [...], tests_ordered: [...],
+                               lifestyle_recommendations: [...], follow_up, referrals: [...]}
+
+For EACH entity provide:
 1. fact_type: one of the types above
-2. value: dict with entity-specific fields
-3. confidence: 0.0-1.0 (how certain you are)
+2. value: dict as specified
+3. confidence: 0.0-1.0 (clarity of source text)
 4. evidence_text: exact quote from source (15-50 words)
 
 """
@@ -175,10 +240,46 @@ For EACH entity, provide:
 {
   "facts": [
     {
+      "fact_type": "patient_name",
+      "value": "Jane Smith",
+      "confidence": 0.97,
+      "evidence_text": "Patient: Jane Smith, DOB 1975-04-12"
+    },
+    {
+      "fact_type": "chief_complaint",
+      "value": {"free_text": "chest pain for 2 weeks", "onset": "2 weeks ago", "severity": "6/10", "location": "substernal"},
+      "confidence": 0.92,
+      "evidence_text": "Patient reports substernal chest pain for the past 2 weeks, rated 6 out of 10"
+    },
+    {
+      "fact_type": "chronic_condition",
+      "value": {"name": "hypertension", "icd10_code": "I10", "status": "active"},
+      "confidence": 0.93,
+      "evidence_text": "known hypertension managed with Lisinopril"
+    },
+    {
       "fact_type": "medication",
-      "value": {"name": "Lisinopril", "dose": "10mg", "frequency": "daily"},
+      "value": {"name": "Lisinopril", "dose": "10mg", "frequency": "daily", "route": "oral"},
       "confidence": 0.95,
       "evidence_text": "patient taking Lisinopril 10mg once daily"
+    },
+    {
+      "fact_type": "allergy",
+      "value": {"substance": "Penicillin", "reaction": "rash", "severity": "moderate", "category": "drug"},
+      "confidence": 0.90,
+      "evidence_text": "allergic to penicillin, develops rash"
+    },
+    {
+      "fact_type": "vital",
+      "value": {"type": "blood_pressure", "value": "142/88", "unit": "mmHg"},
+      "confidence": 0.98,
+      "evidence_text": "BP 142/88 mmHg at today's visit"
+    },
+    {
+      "fact_type": "lab_result",
+      "value": {"test": "HbA1c", "value": "7.2", "unit": "%", "reference_range": "<5.7", "abnormal": true},
+      "confidence": 0.96,
+      "evidence_text": "HbA1c 7.2% (reference <5.7%)"
     }
   ]
 }
