@@ -116,7 +116,7 @@ alembic upgrade head
 - Ensure firewall isn't blocking port 5432
 
 ### Alembic Import Errors
-- Make sure all dependencies are installed: `pip install -r requirements_new.txt`
+- Make sure all dependencies are installed: `pip install -r requirements.txt`
 - Verify Python path includes the server directory
 
 ---

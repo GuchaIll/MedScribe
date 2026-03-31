@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(python scripts/check_database.py:*)",
-      "Bash(python scripts/init_database.py:*)"
-    ]
-  }
-}
