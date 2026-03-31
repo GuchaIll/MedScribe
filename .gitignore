@@ -114,6 +114,9 @@ out/
 *.swo
 *~
 
+# ── AI / Agent tool settings (local only) ───────────────────────────────────
+.claude/
+
 # ── Docker ──────────────────────────────────────────────────────────────────
 docker-compose.override.yml
 
