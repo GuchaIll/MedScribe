@@ -23,7 +23,7 @@ class TestPipelineProgressStore:
     def test_mark_node_completed_records_detail_and_starts_predicted_next(
         self, store, monkeypatch
     ):
-        times = iter([100.0, 101.234])
+        times = iter([100.0, 101.234, 102.0])
         monkeypatch.setattr("app.core.pipeline_progress.time.monotonic", lambda: next(times))
 
         store.init_pipeline("session-1")

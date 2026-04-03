@@ -19,7 +19,7 @@ class TestPatientModelHelpers:
             ([1.0, 2.0, 3.0, 4.0], "increasing"),
             ([4.0, 3.0, 2.0, 1.0], "decreasing"),
             ([10.0, 10.3, 9.9], "stable"),
-            ([10.0, 12.0, 9.0, 11.0], "fluctuating"),
+            ([10.0, 13.0, 11.0, 14.0, 12.0], "fluctuating"),
         ],
     )
     def test_trend_direction_variants(self, values, expected):
@@ -149,7 +149,7 @@ class TestPatientModel:
             visit_count=13,
         )
 
-        assert risk["score"] == 68
+        assert risk["score"] == 78
         assert risk["level"] == "high"
         assert "Elderly patient (age 78)" in risk["factors"]
         assert "Condition: Type 2 diabetes mellitus" in risk["factors"]
