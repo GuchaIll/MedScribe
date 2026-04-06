@@ -101,7 +101,7 @@ SOAP notes, discharge summaries, and referral letters are generated via Jinja2 t
 | Frontend | React 18, TypeScript, Create React App, Tailwind CSS |
 | Voice | Silero VAD (ONNX via `@ricky0123/vad-react`), Web Speech API |
 | Agent Orchestration | LangGraph, LangChain |
-| LLM Inference | Groq API (llama-3.3-70b-versatile) |
+| LLM Inference | Groq, OpenAI, Anthropic Claude, Google Gemini, OpenRouter (multi-provider) |
 | Backend | FastAPI, Uvicorn, Python 3.11+ |
 | Database | PostgreSQL 15 + pgvector, SQLAlchemy 2.0, Alembic |
 | Graph Checkpointing | SQLite (LangGraph `SqliteSaver`) |
@@ -118,7 +118,7 @@ SOAP notes, discharge summaries, and referral letters are generated via Jinja2 t
 ### Prerequisites
 
 - Docker Desktop
-- Groq API key — free at [console.groq.com](https://console.groq.com)
+- At least one LLM API key (Groq, OpenAI, Anthropic, Google, or OpenRouter)
 
 ### Quick Start
 
@@ -126,8 +126,8 @@ SOAP notes, discharge summaries, and referral letters are generated via Jinja2 t
 # Clone and configure
 git clone https://github.com/GuchaIll/MedicalTranscriptionApp.git
 cd MedicalTranscriptionApp
-cp server/.env.example .env
-# Open .env and set GROQ_API_KEY and SECRET_KEY
+cp .env.example .env
+# Open .env and set SECRET_KEY plus at least one LLM API key
 
 # Start all services
 docker compose up
@@ -149,8 +149,17 @@ docker compose up --build  # rebuild after dependency changes
 ### Minimum Required Environment Variables
 
 ```env
-# Groq API key — required for LLM inference (SOAP note generation, field extraction)
+# Configure at least one LLM provider key.
 GROQ_API_KEY=gsk_...
+OPENAI_API_KEY=sk_...
+ANTHROPIC_API_KEY=sk_ant_...
+GOOGLE_API_KEY=...
+OPENROUTER_API_KEY=sk_or_...
+
+# Optional explicit provider selection when multiple keys are present.
+# If omitted, the app auto-selects in priority order:
+# groq -> openai -> anthropic -> google -> openrouter
+LLM_PROVIDER=groq
 
 # JWT signing secret — generate with: python -c "import secrets; print(secrets.token_hex(32))"
 SECRET_KEY=your_random_secret_key_here
@@ -168,7 +177,7 @@ ELEVEN_LABS_API_KEY=sk_...
 HUGGINGFACE_API_KEY=hf_...
 ```
 
-See [`server/.env.example`](server/.env.example) for the full variable reference.
+See [.env.example](.env.example) for the root Docker Compose template and [server/.env.example](server/.env.example) for the full server variable reference.
 
 ---
 
@@ -180,8 +189,8 @@ LangGraph provides native state serialisation, conditional edge routing, and int
 **pgvector over an external vector store**
 Storing embeddings in PostgreSQL via pgvector eliminates an external dependency and keeps all patient data co-located under a single governance boundary — important for HIPAA-friendly architecture. The trade-off is that ANN index performance degrades under high concurrent query load relative to purpose-built vector databases, which is acceptable at clinic-scale volumes.
 
-**Groq inference over local model serving**
-Whisper and pyannote-audio are disabled at startup due to a `torchvision::nms` DLL conflict on Windows. Using Groq's hosted llama-3.3-70b produced an unexpected benefit: the server deploys on CPU-only machines with no CUDA dependency. SOAP note generation runs in approximately 1–3 seconds. Local Whisper inference remains on the roadmap once the dependency conflict is resolved.
+**Multi-provider LLM inference over local model serving**
+MedScribe supports five LLM backends: Groq, OpenAI, Anthropic Claude, Google Gemini, and OpenRouter. The app auto-selects the first provider with a configured API key (priority: groq, openai, anthropic, google, openrouter) or honours an explicit `LLM_PROVIDER` env var. A frontend modal lets the user switch providers at runtime when multiple keys are present. Using hosted inference means the server deploys on CPU-only machines with no CUDA dependency. SOAP note generation runs in approximately 1--3 seconds on Groq. Local Whisper inference remains on the roadmap once the torchvision dependency conflict is resolved.
 
 For full engineering rationale see [docs/design-decisions.md](docs/design-decisions.md).
 
@@ -202,6 +211,9 @@ For full engineering rationale see [docs/design-decisions.md](docs/design-decisi
 | GET | `/api/clinical/suggestions` | On-demand clinical decision support |
 | POST | `/api/records/generate` | Generate SOAP note / PDF / HTML |
 | GET | `/api/patient/{id}` | Get patient profile |
+| GET | `/api/llm/providers` | List available LLM providers |
+| POST | `/api/llm/provider/select` | Select an LLM provider at runtime |
+| GET | `/api/llm/status` | Current LLM provider status |
 
 ---
 

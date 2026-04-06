@@ -2,7 +2,7 @@
 Model services for loading and managing ML models.
 
 Services:
-- LLMService: LLM inference (Groq, Ollama, etc.)
+- LLMService: LLM inference (Groq, OpenAI, Anthropic, Google, OpenRouter, Ollama)
 - WhisperService: Speech-to-Text with VAD
 - EmbeddingService: Text embeddings for semantic search
 """
@@ -15,6 +15,7 @@ from functools import lru_cache
 
 from app.config.settings import Settings, get_settings
 from app.services.locator import Service
+from app.models.llm_providers import LLMProviderFactory
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +26,11 @@ class LLMService(Service):
 
     Supports:
     - Groq API (remote)
+    - OpenAI API (remote)
+    - Anthropic Claude (remote)
+    - Google Gemini (remote)
+    - OpenRouter (remote)
     - Ollama (local)
-    - HuggingFace (remote or local)
     """
 
     def __init__(self, settings: Settings):
@@ -37,48 +41,45 @@ class LLMService(Service):
             settings: Application settings
         """
         self.settings = settings
-        self.client = None
+        self.provider = None
+        self.provider_name = None
         self.call_count = 0
         self.model_name = settings.model.llm_name
 
     async def initialize(self) -> None:
-        """Load and initialize LLM client."""
-        logger.info(f"Initializing LLM service: {self.settings.model.llm_provider}")
-
-        if self.settings.model.llm_provider == "groq":
-            await self._initialize_groq()
-        elif self.settings.model.llm_provider == "ollama":
-            await self._initialize_ollama()
-        else:
-            raise ValueError(f"Unsupported LLM provider: {self.settings.model.llm_provider}")
-
-    async def _initialize_groq(self) -> None:
-        """Initialize Groq client."""
+        """Load and initialize LLM provider."""
         try:
-            from groq import Groq
-        except ImportError:
-            raise ImportError("groq package required for Groq LLM. Install: pip install groq")
+            # Get the default provider or user-selected one
+            self.provider_name = LLMProviderFactory.get_default_provider(self.settings)
+            logger.info(f"Initializing LLM service: {self.provider_name}")
 
-        if not self.settings.groq_api_key:
-            raise ValueError("GROQ_API_KEY environment variable not set")
+            # Create provider instance
+            if self.provider_name == "ollama":
+                await self._initialize_ollama()
+            else:
+                # Use factory for all other providers
+                self.provider = LLMProviderFactory.create(self.provider_name, self.settings)
+                logger.info(f"{self.provider_name.capitalize()} LLM provider initialized")
 
-        self.client = Groq(api_key=self.settings.groq_api_key)
-        logger.info("Groq LLM client initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize LLM service: {e}")
+            raise
 
     async def _initialize_ollama(self) -> None:
-        """Initialize Ollama client."""
+        """Initialize Ollama client (local fallback)."""
         try:
             from ollama import Client
         except ImportError:
             raise ImportError("ollama package required for local LLM. Install: pip install ollama")
 
-        self.client = Client(host="http://localhost:11434")
+        self.provider = Client(host="http://localhost:11434")
         logger.info("Ollama LLM client initialized")
 
     async def cleanup(self) -> None:
         """Clean up resources."""
         logger.info("Cleaning up LLM service")
-        self.client = None
+        self.provider = None
+        self.provider_name = None
 
     async def generate(
         self,
@@ -101,7 +102,7 @@ class LLMService(Service):
             RuntimeError: If budget exceeded or inference fails
             ValueError: If not initialized
         """
-        if self.client is None:
+        if self.provider is None:
             raise ValueError("LLMService not initialized")
 
         if self.call_count >= self.settings.model.llm_max_budget_per_run:
@@ -113,26 +114,27 @@ class LLMService(Service):
         temperature = temperature or self.settings.model.llm_temperature
 
         self.call_count += 1
-        logger.info(f"LLM call {self.call_count}: {self.model_name}")
+        logger.info(f"LLM call {self.call_count} ({self.provider_name}): {self.model_name}")
 
         try:
-            if self.settings.model.llm_provider == "groq":
+            if self.provider_name == "ollama":
+                # Ollama API call (sync)
                 response = await asyncio.to_thread(
-                    self.client.chat.completions.create,
-                    model=self.model_name,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                )
-                return response.choices[0].message.content
-            else:
-                # Ollama response handling
-                response = await asyncio.to_thread(
-                    self.client.generate,
+                    self.provider.generate,
                     model=self.model_name,
                     prompt=prompt,
                 )
                 return response["response"]
+            else:
+                # All cloud providers use the generate method
+                response = await asyncio.to_thread(
+                    self.provider.generate,
+                    prompt=prompt,
+                    model=self.model_name,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                return response
         except Exception as e:
             logger.error(f"LLM inference failed: {e}")
             raise

@@ -42,6 +42,26 @@ export async function sendTranscription(sessionId, text, speaker = 'Unknown') {
   });
 }
 
+// ── LLM Configuration ───────────────────────────────────────────────────────
+
+/** Get available LLM providers and their status */
+export async function getLLMProviders() {
+  return apiFetch('/llm/providers');
+}
+
+/** Get current LLM configuration status */
+export async function getLLMStatus() {
+  return apiFetch('/llm/status');
+}
+
+/** Select an LLM provider for the session */
+export async function selectLLMProvider(providerName) {
+  return apiFetch('/llm/provider/select', {
+    method: 'POST',
+    body: JSON.stringify({ provider_name: providerName }),
+  });
+}
+
 // ── Pipeline ────────────────────────────────────────────────────────────────
 
 /**

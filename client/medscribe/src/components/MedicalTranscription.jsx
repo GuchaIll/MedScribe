@@ -20,6 +20,7 @@ import Sidebar from "./layout/Sidebar";
 import Footer from "./layout/Footer";
 import TranscriptionFeed from "./transcription/TranscriptionFeed";
 import UploadPanel from "./upload/UploadPanel";
+import LLMProviderModal from "./modals/LLMProviderModal";
 
 import useTimer from "../hooks/useTimer";
 import useNotify from "../hooks/useNotify";
@@ -29,13 +30,19 @@ import { PHYSICIAN, PATIENT, AGENT, EMPTY_DOCUMENTS } from "../constants";
 
 // Forgiving wake-word regex — Web Speech API often mis-transcribes "assistant"
 // as "persistence", "a]sistant", "assistent", etc.
-const ASSISTANT_REGEX = /^(?:assistant|assist\s*ant|persistence|assistent|a]?sistant|hey assistant)[,:\s]+(.+)/i;
+const ASSISTANT_REGEX = /^(?:assistant|assist\s*ant|persistence|assisstance|assistent|a]?sistant|hey assistant)[,:\s]+(.+)/i;
 const PATIENT_ID = "patient-default-001";
 
 export default function MedicalTranscription() {
   /* ── Session ── */
   const [sessionId, setSessionId] = useState(null);
   const [sessionActive, setSessionActive] = useState(false);
+
+  /* ── LLM Provider Modal ── */
+  const [showLLMModal, setShowLLMModal] = useState(true);
+  const [llmProviderSelected, setLLMProviderSelected] = useState(
+    sessionStorage.getItem("selectedLLMProvider") !== null
+  );
 
   /* ── Messages / transcript ── */
   const [msgs, setMsgs] = useState([]);
@@ -65,7 +72,7 @@ export default function MedicalTranscription() {
   const [pendingDocSelect, setPendingDocSelect] = useState(false);
 
   /* ── Notifications ── */
-  const { toast, notify, clearToast } = useNotify();
+  const { notify } = useNotify();
 
   /* ── Segments for pipeline ── */
   const segmentsRef = useRef([]);
@@ -210,7 +217,7 @@ Whenever you're ready, we can begin.`,
         raw_text: text,
       });
 
-      const assistantMatch = text.trim().match(ASSISTANT_REGEX);
+      const assistantMatch = text.toLowerCase().trim().match(ASSISTANT_REGEX);
       if (assistantMatch && handleAssistantQueryRef.current) {
         handleAssistantQueryRef.current(assistantMatch[1].trim());
       }
@@ -814,6 +821,20 @@ This may take a moment…`,
         input::placeholder,textarea::placeholder{color:rgba(255,255,255,0.2)}
         input:focus,textarea:focus{border-color:rgba(255,255,255,0.16)!important;outline:none}
       `}</style>
+
+      {/* LLM Provider Selection Modal */}
+      {showLLMModal && !llmProviderSelected && (
+        <LLMProviderModal
+          onProviderSelected={(provider) => {
+            setLLMProviderSelected(true);
+            setShowLLMModal(false);
+          }}
+          onDismiss={() => {
+            setShowLLMModal(false);
+            // Don't set llmProviderSelected to true - allows re-showing modal
+          }}
+        />
+      )}
 
       <div
         style={{

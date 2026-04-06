@@ -42,6 +42,7 @@ from app.api.routes.tts import router as tts_router
 from app.api.routes.session import router as session_router
 from app.api.routes.patient import router as patient_router
 from app.api.routes.assistant import router as assistant_router
+from app.api.routes.llm_config import router as llm_config_router
 
 
 # ---------------------------------------------------------------------------
@@ -150,9 +151,35 @@ async def lifespan(app: FastAPI):
     log.info("  MedScribe API — service startup")
     log.info("=" * 60)
 
+    # Check for at least one LLM provider
+    from app.config.settings import get_settings
+    settings = get_settings()
+    llm_providers_available = []
+    if settings.groq_api_key:
+        llm_providers_available.append("groq")
+    if settings.openai_api_key:
+        llm_providers_available.append("openai")
+    if settings.anthropic_api_key:
+        llm_providers_available.append("anthropic")
+    if settings.google_api_key:
+        llm_providers_available.append("google")
+    if settings.openrouter_api_key:
+        llm_providers_available.append("openrouter")
+
+    llm_check = bool(llm_providers_available)
+    if llm_providers_available:
+        providers_str = ", ".join(llm_providers_available)
+        log.info(f"  [OK]  LLM Providers     — {providers_str}")
+    else:
+        log.warning(
+            "  [WARN] LLM Providers     — No LLM API keys configured. "
+            "Set one of: GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, "
+            "GOOGLE_API_KEY, or OPENROUTER_API_KEY"
+        )
+
     results = {
         "database":        _check_database(log),
-        "groq_api_key":    _check_env_key(log, "GROQ_API_KEY", "Groq LLM API"),
+        "llm_provider":    llm_check,
         "elevenlabs_key":  _check_env_key(log, "ELEVEN_LABS_API_KEY", "ElevenLabs TTS"),
         "secret_key":      _check_env_key(log, "SECRET_KEY", "JWT secret key"),
         "storage":         _check_storage(log),
@@ -167,7 +194,7 @@ async def lifespan(app: FastAPI):
     log.info(
         f"  Startup checks: {ok_count}/{total} passed  "
         f"({elapsed:.0f}ms)  "
-        f"— {'READY' if results['database'] else 'DEGRADED (DB unavailable)'}"
+        f"— {'READY' if results['database'] and llm_check else 'DEGRADED'}"
     )
     log.info("=" * 60)
 
@@ -196,6 +223,7 @@ app.include_router(transcript_router)
 app.include_router(tts_router)
 app.include_router(patient_router)
 app.include_router(assistant_router)
+app.include_router(llm_config_router)
 
 
 @app.get("/")

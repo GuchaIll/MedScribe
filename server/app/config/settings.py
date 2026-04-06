@@ -109,8 +109,13 @@ class Settings:
 
     # API Keys (from environment only, never in config file)
     groq_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
+    google_api_key: Optional[str] = None
+    openrouter_api_key: Optional[str] = None
     huggingface_token: Optional[str] = None
     eleven_labs_api_key: Optional[str] = None
+    llm_provider: Optional[str] = None  # User-selected provider
 
     @classmethod
     def from_yaml(cls, config_path: str | Path = "config.yaml") -> "Settings":
@@ -142,8 +147,13 @@ class Settings:
             environment=os.getenv("ENVIRONMENT", settings_dict.get("environment", "development")),
             debug=os.getenv("DEBUG", str(settings_dict.get("debug", False))).lower() == "true",
             groq_api_key=os.getenv("GROQ_API_KEY"),
+            openai_api_key=os.getenv("OPENAI_API_KEY"),
+            anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
+            google_api_key=os.getenv("GOOGLE_API_KEY"),
+            openrouter_api_key=os.getenv("OPENROUTER_API_KEY"),
             huggingface_token=os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN"),
             eleven_labs_api_key=os.getenv("ELEVEN_LABS_API_KEY"),
+            llm_provider=os.getenv("LLM_PROVIDER"),
         )
 
     @staticmethod

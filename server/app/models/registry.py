@@ -71,7 +71,7 @@ def get_diarization_pipeline():
         return _PyAnnotePipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
         )
-    except Exception as exc:  # noqa: BLE001 - want to bubble up any auth/download issue with context
+    except Exception:  # noqa: BLE001 - want to bubble up any auth/download issue with context
         token_hint = f"{token[:4]}..." if token else "None"
         logging.exception("Failed to load pyannote/speaker-diarization with token prefix %s", token_hint)
         raise
@@ -104,15 +104,76 @@ def get_llm_client():
             "tokenizer": tokenizer
         }
     elif llm_model == "api":
-        from groq import Groq
-        groq_api_key = os.environ.get("GROQ_API_KEY")
-        if not groq_api_key:
-            raise ValueError("GROQ_API_KEY environment variable not set for Groq API LLM client")
-        client = Groq(api_key=groq_api_key)
+        selected = (os.environ.get("LLM_PROVIDER") or "").strip().lower()
+        provider_order = ["groq", "openai", "anthropic", "google", "openrouter"]
+
+        keys = {
+            "groq": os.environ.get("GROQ_API_KEY"),
+            "openai": os.environ.get("OPENAI_API_KEY"),
+            "anthropic": os.environ.get("ANTHROPIC_API_KEY"),
+            "google": os.environ.get("GOOGLE_API_KEY"),
+            "openrouter": os.environ.get("OPENROUTER_API_KEY"),
+        }
+
+        provider = None
+        if selected:
+            if selected not in provider_order:
+                raise ValueError(
+                    f"Unsupported LLM_PROVIDER: {selected}. "
+                    f"Supported: {', '.join(provider_order)}"
+                )
+            if not keys.get(selected):
+                raise ValueError(
+                    f"LLM_PROVIDER is set to '{selected}' but required API key is missing"
+                )
+            provider = selected
+        else:
+            for name in provider_order:
+                if keys.get(name):
+                    provider = name
+                    break
+
+        if not provider:
+            raise ValueError(
+                "No LLM API key configured. Set one of GROQ_API_KEY, OPENAI_API_KEY, "
+                "ANTHROPIC_API_KEY, GOOGLE_API_KEY, OPENROUTER_API_KEY"
+            )
+
+        if provider == "groq":
+            from groq import Groq
+
+            client = Groq(api_key=keys["groq"])
+            model_name = os.environ.get("LLM_NAME", "llama-3.3-70b-versatile")
+        elif provider == "openai":
+            from openai import OpenAI
+
+            client = OpenAI(api_key=keys["openai"])
+            model_name = os.environ.get("LLM_NAME", "gpt-4o-mini")
+        elif provider == "anthropic":
+            from anthropic import Anthropic
+
+            client = Anthropic(api_key=keys["anthropic"])
+            model_name = os.environ.get("LLM_NAME", "claude-3-5-sonnet-latest")
+        elif provider == "google":
+            import google.generativeai as genai
+
+            genai.configure(api_key=keys["google"])
+            client = genai.GenerativeModel(os.environ.get("LLM_NAME", "gemini-1.5-flash"))
+            model_name = os.environ.get("LLM_NAME", "gemini-1.5-flash")
+        else:  # openrouter
+            from openai import OpenAI
+
+            client = OpenAI(
+                api_key=keys["openrouter"],
+                base_url="https://openrouter.ai/api/v1",
+            )
+            model_name = os.environ.get("LLM_NAME", "openai/gpt-4o-mini")
+
         return {
             "type": "api",
+            "provider": provider,
             "model": client,
-            "api_key": groq_api_key,
+            "model_name": model_name,
         }
     else:
         raise ValueError(f"Unsupported LLM_MODEL: {llm_model}")
