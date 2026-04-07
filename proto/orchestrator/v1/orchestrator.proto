@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package orchestrator.v1;
+
+option go_package = "github.com/medscribe/proto/orchestrator/v1;orchestratorv1";
+
+import "common/v1/types.proto";
+
+service OrchestratorService {
+  rpc RunPipeline(RunPipelineRequest) returns (stream PipelineProgressEvent);
+  rpc GetProgress(GetProgressRequest) returns (GetProgressResponse);
+  rpc ResumeFromCheckpoint(ResumeRequest) returns (stream PipelineProgressEvent);
+}
+
+message RunPipelineRequest {
+  string session_id = 1;
+  string patient_id = 2;
+  string doctor_id = 3;
+  bool is_new_patient = 4;
+  repeated common.v1.TranscriptSegment segments = 5;
+  repeated common.v1.DocumentArtifact documents = 6;
+}
+
+message PipelineProgressEvent {
+  string session_id = 1;
+  string node_name = 2;
+  NodeStatus status = 3;
+  string detail = 4;
+  int64 started_at_ms = 5;
+  int64 completed_at_ms = 6;
+  double duration_ms = 7;
+  PipelineResult result = 8;
+}
+
+enum NodeStatus {
+  NODE_STATUS_UNSPECIFIED = 0;
+  NODE_STATUS_PENDING = 1;
+  NODE_STATUS_RUNNING = 2;
+  NODE_STATUS_COMPLETED = 3;
+  NODE_STATUS_FAILED = 4;
+  NODE_STATUS_SKIPPED = 5;
+}
+
+message PipelineResult {
+  string clinical_note = 1;
+  string structured_record_json = 2;
+  string clinical_suggestions_json = 3;
+  common.v1.ValidationReport validation_report = 4;
+  string message = 5;
+}
+
+message GetProgressRequest {
+  string session_id = 1;
+}
+
+message GetProgressResponse {
+  string session_id = 1;
+  PipelineStatus pipeline_status = 2;
+  string current_node = 3;
+  int64 started_at_ms = 4;
+  int64 completed_at_ms = 5;
+  string error = 6;
+  repeated NodeProgress nodes = 7;
+}
+
+enum PipelineStatus {
+  PIPELINE_STATUS_UNSPECIFIED = 0;
+  PIPELINE_STATUS_PENDING = 1;
+  PIPELINE_STATUS_RUNNING = 2;
+  PIPELINE_STATUS_COMPLETED = 3;
+  PIPELINE_STATUS_FAILED = 4;
+}
+
+message NodeProgress {
+  string name = 1;
+  string label = 2;
+  string phase = 3;
+  string description = 4;
+  NodeStatus status = 5;
+  int64 started_at_ms = 6;
+  int64 completed_at_ms = 7;
+  double duration_ms = 8;
+  string detail = 9;
+}
+
+message ResumeRequest {
+  string session_id = 1;
+  string resume_from_node = 2;
+}

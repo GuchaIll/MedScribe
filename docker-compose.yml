@@ -32,6 +32,60 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+  #Kafka topic initialization
+  #create four pipelien topics with appropriate partition counts:
+  #audio.ingest - raw/voiced audio chunks from audio gateway (1 partition)
+  #transcript.segments - Whisper output segments keyed by session_id
+  #pipeline.trigger - signals the orchestrator to start pipeline run
+  #pipelien.results - final pipeline output for API relay
+
+  kafka-init:
+    image: apache/kafka:4.2.0
+    depends_on:
+      kafka: 
+        condition: service_healthy
+      entrypoint: ["/bin/sh", "-c", "echo 'Initializing Kafka topics...' && sleep 10"]
+      command:
+        - |
+          echo "---Creating Kafka topics---"
+
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+            --create --if-not-exists \
+            --topic audio.ingest \
+            --partitions 3 \
+            --replication-factor 1 \
+            --config retention.ms=3600000
+            --config cleanup.policy=delete
+
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+            --create --if-not-exists \
+            --topic transcript.segments \
+            --partitions 3 \
+            --replication-factor 1 \
+            --config retention.ms=86400000
+            --config cleanup.policy=delete
+
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+            --create --if-not-exists \
+            --topic pipeline.trigger \
+            --partitions 3 \
+            --replication-factor 1 \
+            --config retention.ms=86400000 \
+            --config cleanup.policy=delete
+
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+            --create --if-not-exists \
+            --topic pipeline.results \
+            --partitions 3 \
+            --replication-factor 1 \
+            --config retention.ms=86400000
+            --config cleanup.policy=delete
+
+          echo "---Kafka topics initialized---"
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
+      restart: "no"
+
+# --API---
 
   api:
     build:
@@ -52,6 +106,8 @@ services:
       - "3001:3001"
     depends_on:
       db:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
 
   client:
@@ -74,3 +130,4 @@ services:
 
 volumes:
   db_data:
+  kafka_data:

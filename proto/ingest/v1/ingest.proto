@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package ingest.v1;
+
+option go_package = "github.com/medscribe/proto/ingest/v1;ingestv1";
+
+import "common/v1/types.proto";
+
+service IngestionService {
+  rpc IngestAudio(IngestAudioRequest) returns (IngestAudioResponse);
+  rpc IngestTranscript(IngestTranscriptRequest) returns (IngestTranscriptResponse);
+  rpc TriggerPipeline(TriggerPipelineRequest) returns (TriggerPipelineResponse);
+}
+
+message AudioChunk {
+  string session_id = 1;
+  bytes audio_data = 2;
+  int64 timestamp_ms = 3;
+  string format = 4;
+  int32 sample_rate = 5;
+  int32 channels = 6;
+}
+
+message IngestAudioRequest {
+  AudioChunk chunk = 1;
+}
+
+message IngestAudioResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message IngestTranscriptRequest {
+  string session_id = 1;
+  repeated common.v1.TranscriptSegment segments = 2;
+}
+
+message IngestTranscriptResponse {
+  bool success = 1;
+  int32 segments_received = 2;
+  string message = 3;
+}
+
+message PipelineTrigger {
+  string session_id = 1;
+  string patient_id = 2;
+  string doctor_id = 3;
+  bool is_new_patient = 4;
+  repeated common.v1.TranscriptSegment segments = 5;
+  repeated common.v1.DocumentArtifact documents = 6;
+}
+
+message TriggerPipelineRequest {
+  PipelineTrigger trigger = 1;
+}
+
+message TriggerPipelineResponse {
+  bool accepted = 1;
+  string pipeline_id = 2;
+  string message = 3;
+}

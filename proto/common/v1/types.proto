@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/medscribe/proto/common/v1;commonv1";
+
+message TranscriptSegment {
+  double start = 1;
+  double end = 2;
+  string speaker = 3;
+  string user_id = 4;
+  string raw_text = 5;
+  string cleaned_text = 6;
+  repeated string uncertainties = 7;
+  string confidence = 8;
+}
+
+message ConversationTurn {
+  double timestamp = 1;
+  repeated TranscriptSegment segments = 2;
+}
+
+message DocumentArtifact {
+  string document_id = 1;
+  string source_type = 2;
+  string document_name = 3;
+  string extracted_text = 4;
+  repeated string tables_json = 5;
+  string metadata_json = 6;
+}
+
+message ChunkArtifact {
+  string chunk_id = 1;
+  string source = 2;
+  string source_id = 3;
+  string text = 4;
+  double start = 5;
+  double end = 6;
+  string metadata_json = 7;
+}
+
+message CandidateFact {
+  string fact_id = 1;
+  string type = 2;
+  string value_json = 3;
+  string provenance_json = 4;
+  double confidence = 5;
+}
+
+message EvidenceItem {
+  string source_id = 1;
+  string source_type = 2;
+  string snippet = 3;
+  double confidence = 4;
+  string metadata_json = 5;
+}
+
+message ValidationReport {
+  repeated string schema_errors = 1;
+  repeated string missing_fields = 2;
+  repeated string conflicts = 3;
+  bool needs_review = 4;
+  double confidence = 5;
+  string details_json = 6;
+  string assigned_user_id = 7;
+  string validator_id = 8;
+}
+
+message ConflictReport {
+  bool unresolved = 1;
+  repeated string conflicts = 2;
+  repeated string resolutions = 3;
+  string evidence_json = 4;
+  string assigned_user_id = 5;
+  string conflict_resolver_id = 6;
+}
+
+message Controls {
+  string attempts_json = 1;
+  string budget_json = 2;
+  repeated string trace_log_json = 3;
+}
+
+message ClinicalSuggestion {
+  string category = 1;
+  string text = 2;
+  double confidence = 3;
+  string evidence_json = 4;
+}

@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/medscribe/proto/auth/v1;authv1";
+
+service AuthService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc GetProfile(GetProfileRequest) returns (GetProfileResponse);
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+}
+
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+  string full_name = 3;
+  string role = 4;
+  string occupation = 5;
+}
+
+message RegisterResponse {
+  string user_id = 1;
+  string message = 2;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string access_token = 1;
+  string token_type = 2;
+  int64 expires_at_ms = 3;
+  UserProfile profile = 4;
+}
+
+message GetProfileRequest {
+  string user_id = 1;
+}
+
+message GetProfileResponse {
+  UserProfile profile = 1;
+}
+
+message UserProfile {
+  string user_id = 1;
+  string email = 2;
+  string full_name = 3;
+  string role = 4;
+  repeated string permissions = 5;
+  bool is_active = 6;
+  int64 created_at_ms = 7;
+}
+
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+message ValidateTokenResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string role = 3;
+  repeated string permissions = 4;
+  int64 expires_at_ms = 5;
+}
