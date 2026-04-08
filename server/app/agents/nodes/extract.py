@@ -1,9 +1,10 @@
 """
-Agent B — Candidate Extractor (Initial Extraction)
+Agent B -- Candidate Extractor (Bedrock-style Query-Value Extraction)
 
 Purpose: Extract typed candidate facts with confidence scores and evidence spans.
-Deterministic work: canonicalize entities, assign strict fact_type schema.
-Output quality: All candidates must include at least one evidence span.
+Uses targeted sub-queries (query-value pairs) instead of a monolithic prompt.
+Each query targets a specific entity category, reducing prompt size and improving
+extraction accuracy.
 
 DB integration:
   - Reads patient_record_fields (prior history) to augment the LLM prompt
@@ -13,12 +14,12 @@ DB integration:
 import json
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Any, Optional
 from uuid import uuid4
 
 from ..config import AgentContext
 from ..state import GraphState
-from ...models.llm import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -44,297 +45,330 @@ ALLERGY_ALIASES = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Query-Value extraction categories (Bedrock-style)
+# Each category is a targeted sub-query with its own compact prompt.
+# ---------------------------------------------------------------------------
+
+_EXTRACTION_QUERIES: List[Dict[str, Any]] = [
+    {
+        "category": "demographics",
+        "fact_types": ["patient_name", "patient_dob", "patient_sex", "patient_mrn"],
+        "prompt": (
+            "Extract patient demographics. Return JSON: "
+            '{"facts":[{"fact_type":"patient_name"|"patient_dob"|"patient_sex"|"patient_mrn",'
+            '"value":"...","confidence":0.0-1.0,"evidence_text":"exact quote 15-50 words"}]}'
+        ),
+        "max_tokens": 300,
+    },
+    {
+        "category": "chief_complaint_hpi",
+        "fact_types": ["chief_complaint", "hpi_event"],
+        "prompt": (
+            "Extract chief complaint and HPI events. Return JSON: "
+            '{"facts":[{"fact_type":"chief_complaint","value":{"free_text":"...","onset":"...","severity":"...","location":"..."},'
+            '"confidence":0.0-1.0,"evidence_text":"exact quote"},'
+            '{"fact_type":"hpi_event","value":{"symptom":"...","onset":"...","progression":"...","triggers":"...","relieving_factors":"..."},'
+            '"confidence":0.0-1.0,"evidence_text":"exact quote"}]}'
+        ),
+        "max_tokens": 500,
+    },
+    {
+        "category": "medications_allergies",
+        "fact_types": ["medication", "allergy"],
+        "prompt": (
+            "Extract ALL medications and allergies. Return JSON: "
+            '{"facts":[{"fact_type":"medication","value":{"name":"...","dose":"...","route":"...","frequency":"...","indication":"..."},'
+            '"confidence":0.0-1.0,"evidence_text":"exact quote"},'
+            '{"fact_type":"allergy","value":{"substance":"...","reaction":"...","severity":"mild|moderate|anaphylaxis","category":"drug|food|environmental"},'
+            '"confidence":0.0-1.0,"evidence_text":"exact quote"}]}'
+        ),
+        "max_tokens": 500,
+    },
+    {
+        "category": "vitals_labs",
+        "fact_types": ["vital", "lab_result"],
+        "prompt": (
+            "Extract vitals and lab results. Return JSON: "
+            '{"facts":[{"fact_type":"vital","value":{"type":"blood_pressure|heart_rate|respiratory_rate|temperature|spo2|height|weight|bmi",'
+            '"value":"...","unit":"..."},"confidence":0.0-1.0,"evidence_text":"exact quote"},'
+            '{"fact_type":"lab_result","value":{"test":"...","value":"...","unit":"...","reference_range":"...","abnormal":true|false},'
+            '"confidence":0.0-1.0,"evidence_text":"exact quote"}]}'
+        ),
+        "max_tokens": 500,
+    },
+    {
+        "category": "conditions_diagnoses",
+        "fact_types": ["chronic_condition", "diagnosis", "problem", "risk_factor"],
+        "prompt": (
+            "Extract conditions, diagnoses, problems, and risk factors. Return JSON: "
+            '{"facts":[{"fact_type":"chronic_condition","value":{"name":"...","icd10_code":"...","status":"active|resolved"},'
+            '"confidence":0.0-1.0,"evidence_text":"exact quote"},'
+            '{"fact_type":"diagnosis","value":{"code":"...","description":"..."},'
+            '"confidence":0.0-1.0,"evidence_text":"exact quote"},'
+            '{"fact_type":"problem","value":{"name":"...","status":"active|chronic|resolved"},'
+            '"confidence":0.0-1.0,"evidence_text":"exact quote"}]}'
+        ),
+        "max_tokens": 500,
+    },
+    {
+        "category": "history_social_ros",
+        "fact_types": [
+            "family_history", "social_history", "ros_finding",
+            "hospitalization", "surgery", "physical_exam_finding",
+        ],
+        "prompt": (
+            "Extract family history, social history, review of systems, past hospitalizations, "
+            "surgeries, and physical exam findings. Return JSON: "
+            '{"facts":[{"fact_type":"family_history|social_history|ros_finding|hospitalization|surgery|physical_exam_finding",'
+            '"value":{...},"confidence":0.0-1.0,"evidence_text":"exact quote"}]}'
+        ),
+        "max_tokens": 600,
+    },
+    {
+        "category": "assessment_plan",
+        "fact_types": ["assessment", "plan"],
+        "prompt": (
+            "Extract clinical assessment and plan. Return JSON: "
+            '{"facts":[{"fact_type":"assessment","value":{"likely_diagnoses":[...],"differential_diagnoses":[...],"clinical_reasoning":"..."},'
+            '"confidence":0.0-1.0,"evidence_text":"exact quote"},'
+            '{"fact_type":"plan","value":{"medications_prescribed":[...],"tests_ordered":[...],"lifestyle_recommendations":[...],"follow_up":"...","referrals":[...]},'
+            '"confidence":0.0-1.0,"evidence_text":"exact quote"}]}'
+        ),
+        "max_tokens": 600,
+    },
+]
+
+
 def extract_candidates_node(state: GraphState, ctx: AgentContext) -> GraphState:
     """
-    Extract candidate clinical facts from chunks using LLM with structured output.
-    
-    Agent B: Candidate Extractor
-    - Extracts: patient demographics, allergies, medications, diagnoses, vitals, labs
-    - Assigns confidence scores (0.0-1.0)
-    - Creates evidence spans with provenance
-    - Canonicalizes drug names and allergens
-    - Injects patient history from DB into LLM prompt (if available)
-    - Applies Layer 1 grounding verification via embeddings (if available)
-    - Retries on invalid JSON (bounded by budget)
+    Extract candidate clinical facts using Bedrock-style query-value pairs.
+
+    Instead of one massive prompt, dispatches targeted sub-queries in parallel
+    (one per entity category). Each sub-query returns only the specific entity
+    types it targets. Results are merged, deduplicated, canonicalized, and
+    grounded.
     """
     state = state.copy() if isinstance(state, dict) else state
-    
+
     chunks = state.get("chunks", [])
     if not chunks:
-        # Fallback: extract from conversation_log if chunks not available yet
         chunks = _create_chunks_from_conversation_log(state)
-    
+
     candidates: List[Dict[str, Any]] = []
     controls = state.get("controls", {"attempts": {}, "budget": {}})
-    
-    # Track extraction attempts
+
     node_name = "extract_candidates"
     attempts = controls.get("attempts", {})
     attempts[node_name] = attempts.get(node_name, 0) + 1
-    
-    # Budget tracking
+
     budget = controls.get("budget", {})
     max_llm_calls = budget.get("max_total_llm_calls", ctx.max_llm_calls if ctx else 30)
     llm_calls_used = budget.get("llm_calls_used", 0)
-    
+
     if llm_calls_used >= max_llm_calls:
-        print(f"[Extract Candidates] Budget exhausted: {llm_calls_used}/{max_llm_calls} LLM calls")
+        logger.info("[Extract Candidates] Budget exhausted: %d/%d LLM calls", llm_calls_used, max_llm_calls)
         state["candidate_facts"] = candidates
         return state
-    
+
     # Build patient history context from DB (if loaded)
     patient_history_prompt = _build_patient_history_prompt(state)
-    
-    # Process chunks in batches for efficiency
-    batch_size = 3
-    for i in range(0, len(chunks), batch_size):
-        batch = chunks[i:i+batch_size]
-        batch_text = "\n\n---\n\n".join([
-            f"[Chunk {j}] ({chunk.get('source', 'unknown')})\n{chunk.get('text', '')}"
-            for j, chunk in enumerate(batch, start=i)
-        ])
-        
-        # Extract candidates with retry logic
-        max_retries = 2
-        for retry in range(max_retries + 1):
+
+    # Combine all chunk text into a single context block
+    full_text = "\n\n---\n\n".join([
+        f"[Chunk {i}] ({chunk.get('source', 'unknown')})\n{chunk.get('text', '')}"
+        for i, chunk in enumerate(chunks)
+    ])
+
+    # Get the shared LLM client from context
+    llm = ctx.llm if ctx and ctx.llm else None
+    if llm is None and ctx and ctx.llm_factory:
+        llm = ctx.llm_factory()
+
+    if llm is None:
+        logger.warning("[Extract Candidates] No LLM client available")
+        state["candidate_facts"] = candidates
+        return state
+
+    # Dispatch all category queries in parallel using ThreadPoolExecutor.
+    # Limit to 3 concurrent workers to avoid saturating the LLM endpoint
+    # (Groq's free tier serialises requests under the hood for large models).
+    _MAX_EXTRACT_WORKERS = 3
+    _PER_CALL_TIMEOUT_S = 30
+
+    def _run_query(query: Dict[str, Any]) -> List[Dict[str, Any]]:
+        return _call_category_extraction(
+            llm, query, full_text, patient_history_prompt, chunks
+        )
+
+    import time as _time
+    _t0 = _time.monotonic()
+
+    with ThreadPoolExecutor(max_workers=_MAX_EXTRACT_WORKERS) as pool:
+        futures = {
+            pool.submit(_run_query, q): q["category"]
+            for q in _EXTRACTION_QUERIES
+        }
+        for future in as_completed(futures):
+            category = futures[future]
             try:
-                llm_calls_used += 1
-                extracted = _call_extraction_llm(batch_text, batch, retry, patient_history_prompt)
-                
-                if extracted:
-                    candidates.extend(extracted)
-                    break  # Success
-                    
-            except json.JSONDecodeError as e:
-                print(f"[Extract Candidates] JSON decode error (attempt {retry+1}): {e}")
-                if retry == max_retries:
-                    # Failed after retries - create low-confidence fallback
-                    candidates.extend(_create_fallback_candidates(batch))
-            except Exception as e:
-                print(f"[Extract Candidates] Error: {e}")
-                if retry == max_retries:
-                    candidates.extend(_create_fallback_candidates(batch))
-        
-        if llm_calls_used >= max_llm_calls:
-            print(f"[Extract Candidates] Budget limit reached during processing")
-            break
-    
+                result = future.result(timeout=_PER_CALL_TIMEOUT_S)
+                candidates.extend(result)
+                print(f"[Extract] Category {category} returned {len(result)} facts")
+            except TimeoutError:
+                logger.warning("[Extract] Category %s timed out after %ds", category, _PER_CALL_TIMEOUT_S)
+            except Exception as exc:
+                logger.warning("[Extract Candidates] Category %s failed: %s", category, exc)
+
+    _t1 = _time.monotonic()
+    print(f"[Extract] LLM parallel queries took {_t1 - _t0:.1f}s for {len(_EXTRACTION_QUERIES)} categories")
+
+    # All category queries count as LLM calls
+    llm_calls_used += len(_EXTRACTION_QUERIES)
+
     # Canonicalize entities
     candidates = _canonicalize_candidates(candidates)
-    
+
     # Ensure all candidates have evidence spans
     candidates = _ensure_evidence_spans(candidates, chunks)
-    
+
+    # Deduplicate across categories (same fact_type + similar value)
+    candidates = _deduplicate_candidates(candidates)
+
     # Layer 1: Grounding verification via embeddings (if available)
     if ctx and ctx.embedding_service is not None:
+        _t2 = _time.monotonic()
         candidates = _apply_grounding_verification(candidates, ctx)
-    
+        _t3 = _time.monotonic()
+        print(f"[Extract] Grounding verification took {_t3 - _t2:.1f}s for {len(candidates)} candidates")
+
     # Update state
     state["candidate_facts"] = candidates
     controls["attempts"] = attempts
     budget["llm_calls_used"] = llm_calls_used
     controls["budget"] = budget
     state["controls"] = controls
-    
-    print(f"[Extract Candidates] Extracted {len(candidates)} candidate facts "
-          f"(LLM calls: {llm_calls_used}/{max_llm_calls})")
-    
+
+    logger.info(
+        "[Extract Candidates] Extracted %d candidate facts via %d parallel queries "
+        "(LLM calls: %d/%d)",
+        len(candidates), len(_EXTRACTION_QUERIES), llm_calls_used, max_llm_calls,
+    )
+
     return state
 
 
-def _call_extraction_llm(text: str, chunks: List[Dict], retry_count: int, patient_history_prompt: str = "") -> List[Dict[str, Any]]:
-    """Call LLM to extract structured medical entities."""
-    
-    prompt = """You are a medical entity extraction system. Extract clinical facts from the text.
+# ---------------------------------------------------------------------------
+# Per-category LLM call
+# ---------------------------------------------------------------------------
 
-CRITICAL: Return ONLY valid JSON. No explanations, no markdown, just JSON.
+def _call_category_extraction(
+    llm: Any,
+    query: Dict[str, Any],
+    text: str,
+    patient_history_prompt: str,
+    chunks: List[Dict],
+) -> List[Dict[str, Any]]:
+    """Run a single category extraction query against the LLM."""
 
-Extract ALL of these entity types (omit types not present, but be thorough):
+    system = (
+        "You are a medical entity extraction system. "
+        "Extract ONLY the requested entity types from the clinical text. "
+        "Return ONLY valid JSON. No explanations, no markdown."
+    )
 
-DEMOGRAPHICS (scalar — one value per patient):
-- patient_name:       value: "Full Name"
-- patient_dob:        value: "YYYY-MM-DD"
-- patient_sex:        value: "Male" | "Female" | "Other"
-- patient_mrn:        value: "MRN string"
+    prompt = f"{system}\n\n{query['prompt']}"
 
-CHIEF COMPLAINT (mandatory for every visit):
-- chief_complaint:    value: {free_text, onset, duration, severity (e.g. "7/10"), location}
-
-HISTORY OF PRESENT ILLNESS (one entry per symptom/event):
-- hpi_event:          value: {symptom, onset, progression, triggers, relieving_factors,
-                               associated_symptoms, timeline, timestamp}
-
-PAST MEDICAL HISTORY:
-- chronic_condition:  value: {name, icd10_code, onset_year, status}
-  Examples: hypertension, diabetes type 2, obesity, hyperlipidemia, COPD
-- hospitalization:    value: {reason, date, facility, duration}
-- surgery:            value: {name, date, facility}
-
-MEDICATIONS (list every drug mentioned):
-- medication:         value: {name, dose, route, frequency, indication, start_date}
-  Examples: "Metformin 500mg BID PO", "Lisinopril 10mg daily"
-
-ALLERGIES (safety-critical — extract ALL):
-- allergy:            value: {substance, reaction, severity ("mild"|"moderate"|"anaphylaxis"),
-                               category ("drug"|"food"|"environmental")}
-
-FAMILY HISTORY:
-- family_history:     value: {member ("mother"|"father"|"sibling"|"child"|"grandparent"),
-                               conditions: [...], alive: true|false,
-                               age_at_death, cause_of_death}
-
-SOCIAL HISTORY:
-- social_history:     value: {tobacco, alcohol, drug_use, occupation, exercise, diet}
-  OR: {category: "tobacco", value: "20 pack-years, quit 2010"}
-
-REVIEW OF SYSTEMS (one entry, dict keyed by system):
-- ros_finding:        value: {system ("cardiovascular"|"respiratory"|"neurological"|
-                                       "gastrointestinal"|"musculoskeletal"|"dermatological"|
-                                       "psychiatric"|"endocrine"|"genitourinary"|"hematologic"),
-                               finding: "chest pain, palpitations"}
-
-VITALS (one entry per measurement):
-- vital:              value: {type ("blood_pressure"|"heart_rate"|"respiratory_rate"|
-                                     "temperature"|"spo2"|"height"|"weight"|"bmi"),
-                               value: "120/80", unit: "mmHg"}
-
-LABS (one entry per test with ALL details):
-- lab_result:         value: {test, value, unit, reference_range, date, abnormal: true|false}
-  Include: cholesterol, LDL, HDL, triglycerides, glucose, HbA1c, creatinine, BUN,
-           sodium, potassium, AST, ALT, ALP, CBC components, TSH, vitamin D, B12
-
-PHYSICAL EXAM:
-- physical_exam_finding: value: {system ("general"|"cardiovascular"|"respiratory"|
-                                          "neurological"|"abdomen"|"musculoskeletal"|
-                                          "skin"|"head_neck"),
-                                   finding: "Regular rhythm, no murmurs"}
-
-DIAGNOSES (ICD-10 coded when possible):
-- diagnosis:          value: {code, description}
-
-PROBLEM LIST (active issues):
-- problem:            value: {name, status ("active"|"chronic"|"resolved")}
-
-RISK FACTORS:
-- risk_factor:        value: {name, severity ("low"|"moderate"|"high"), source}
-
-ASSESSMENT & PLAN:
-- assessment:         value: {likely_diagnoses: [...], differential_diagnoses: [...],
-                               clinical_reasoning}
-- plan:               value: {medications_prescribed: [...], tests_ordered: [...],
-                               lifestyle_recommendations: [...], follow_up, referrals: [...]}
-
-For EACH entity provide:
-1. fact_type: one of the types above
-2. value: dict as specified
-3. confidence: 0.0-1.0 (clarity of source text)
-4. evidence_text: exact quote from source (15-50 words)
-
-"""
-    
-    # Inject patient history context if available
     if patient_history_prompt:
-        prompt += patient_history_prompt + "\n"
-    
-    prompt += """Output format:
-{
-  "facts": [
-    {
-      "fact_type": "patient_name",
-      "value": "Jane Smith",
-      "confidence": 0.97,
-      "evidence_text": "Patient: Jane Smith, DOB 1975-04-12"
-    },
-    {
-      "fact_type": "chief_complaint",
-      "value": {"free_text": "chest pain for 2 weeks", "onset": "2 weeks ago", "severity": "6/10", "location": "substernal"},
-      "confidence": 0.92,
-      "evidence_text": "Patient reports substernal chest pain for the past 2 weeks, rated 6 out of 10"
-    },
-    {
-      "fact_type": "chronic_condition",
-      "value": {"name": "hypertension", "icd10_code": "I10", "status": "active"},
-      "confidence": 0.93,
-      "evidence_text": "known hypertension managed with Lisinopril"
-    },
-    {
-      "fact_type": "medication",
-      "value": {"name": "Lisinopril", "dose": "10mg", "frequency": "daily", "route": "oral"},
-      "confidence": 0.95,
-      "evidence_text": "patient taking Lisinopril 10mg once daily"
-    },
-    {
-      "fact_type": "allergy",
-      "value": {"substance": "Penicillin", "reaction": "rash", "severity": "moderate", "category": "drug"},
-      "confidence": 0.90,
-      "evidence_text": "allergic to penicillin, develops rash"
-    },
-    {
-      "fact_type": "vital",
-      "value": {"type": "blood_pressure", "value": "142/88", "unit": "mmHg"},
-      "confidence": 0.98,
-      "evidence_text": "BP 142/88 mmHg at today's visit"
-    },
-    {
-      "fact_type": "lab_result",
-      "value": {"test": "HbA1c", "value": "7.2", "unit": "%", "reference_range": "<5.7", "abnormal": true},
-      "confidence": 0.96,
-      "evidence_text": "HbA1c 7.2% (reference <5.7%)"
-    }
-  ]
-}
+        prompt += f"\n\n{patient_history_prompt}"
 
-Text to analyze:
-"""
-    
-    if retry_count > 0:
-        prompt += "\n\nIMPORTANT: Previous attempt failed. Return ONLY valid JSON with no extra text.\n\n"
-    
-    prompt += f"\n{text}\n\nJSON output:"
-    
-    llm = LLMClient()
-    response = llm.generate_response(prompt)
-    
-    # Clean response - remove markdown code blocks if present
-    response = response.strip()
-    if response.startswith("```"):
-        # Remove markdown code fences
-        response = re.sub(r'^```(?:json)?\s*\n', '', response)
-        response = re.sub(r'\n```\s*$', '', response)
-    
-    # Parse JSON
-    data = json.loads(response)
-    
-    # Convert to internal format with proper IDs and evidence spans
-    candidates = []
-    for fact in data.get("facts", []):
-        fact_id = str(uuid4())[:8]
-        fact_type = fact.get("fact_type", "unknown")
-        value = fact.get("value", {})
-        confidence = fact.get("confidence", 0.5)
-        evidence_text = fact.get("evidence_text", "")
-        
-        # Create evidence span (will be refined later)
-        evidence_span = {
-            "source": chunks[0].get("source", "transcript") if chunks else "transcript",
-            "source_id": chunks[0].get("source_id", "unknown") if chunks else "unknown",
-            "locator": {},
-            "snippet": evidence_text[:200],
-            "strength": confidence
-        }
-        
-        candidate = {
-            "fact_id": fact_id,
-            "type": fact_type,
-            "value": value,
-            "confidence": confidence,
-            "provenance": {"evidence": [evidence_span]},
-            "normalized": False,
-            "conflict_group": None
-        }
-        candidates.append(candidate)
-    
-    return candidates
+    prompt += f"\n\nText to analyze:\n{text}\n\nJSON output:"
+
+    max_retries = 1
+    for attempt in range(max_retries + 1):
+        try:
+            if attempt > 0:
+                prompt_with_retry = prompt + "\n\nIMPORTANT: Previous attempt failed. Return ONLY valid JSON.\n"
+            else:
+                prompt_with_retry = prompt
+
+            response = llm.generate_response(
+                prompt_with_retry, max_tokens=query["max_tokens"]
+            ).strip()
+
+            # Strip markdown fences
+            if response.startswith("```"):
+                response = re.sub(r'^```(?:json)?\s*\n?', '', response)
+                response = re.sub(r'\n?```\s*$', '', response)
+
+            data = json.loads(response)
+
+            results = []
+            for fact in data.get("facts", []):
+                fact_id = str(uuid4())[:8]
+                evidence_text = fact.get("evidence_text", "")
+
+                evidence_span = {
+                    "source": chunks[0].get("source", "transcript") if chunks else "transcript",
+                    "source_id": chunks[0].get("source_id", "unknown") if chunks else "unknown",
+                    "locator": {},
+                    "snippet": evidence_text[:200],
+                    "strength": fact.get("confidence", 0.5),
+                }
+
+                results.append({
+                    "fact_id": fact_id,
+                    "type": fact.get("fact_type", "unknown"),
+                    "value": fact.get("value", {}),
+                    "confidence": fact.get("confidence", 0.5),
+                    "provenance": {"evidence": [evidence_span]},
+                    "normalized": False,
+                    "conflict_group": None,
+                })
+            return results
+
+        except json.JSONDecodeError:
+            if attempt == max_retries:
+                logger.warning(
+                    "[Extract] Category %s JSON parse failed after %d attempts",
+                    query["category"], max_retries + 1,
+                )
+                return []
+        except Exception as exc:
+            logger.warning("[Extract] Category %s error: %s", query["category"], exc)
+            return []
+
+    return []
+
+
+# ---------------------------------------------------------------------------
+# Deduplication
+# ---------------------------------------------------------------------------
+
+def _deduplicate_candidates(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Remove duplicate facts across categories (keep highest confidence)."""
+    seen: Dict[str, Dict[str, Any]] = {}
+    for c in candidates:
+        key = _candidate_dedup_key(c)
+        if key in seen:
+            if c.get("confidence", 0) > seen[key].get("confidence", 0):
+                seen[key] = c
+        else:
+            seen[key] = c
+    return list(seen.values())
+
+
+def _candidate_dedup_key(c: Dict[str, Any]) -> str:
+    """Build a deduplication key from fact type and core value."""
+    ft = c.get("type", "")
+    val = c.get("value", {})
+    if isinstance(val, dict):
+        # Use the first meaningful field as key
+        for k in ("name", "substance", "test", "free_text", "description", "symptom", "type"):
+            if k in val:
+                return f"{ft}:{str(val[k]).lower().strip()}"
+        return f"{ft}:{json.dumps(val, sort_keys=True)}"
+    return f"{ft}:{str(val).lower().strip()}"
 
 
 def _create_chunks_from_conversation_log(state: GraphState) -> List[Dict[str, Any]]:
@@ -356,38 +390,6 @@ def _create_chunks_from_conversation_log(state: GraphState) -> List[Dict[str, An
             chunks.append(chunk)
     
     return chunks
-
-
-def _create_fallback_candidates(chunks: List[Dict]) -> List[Dict[str, Any]]:
-    """Create low-confidence fallback candidates when LLM extraction fails."""
-    candidates = []
-    
-    for chunk in chunks:
-        text = chunk.get("text", "").lower()
-        
-        # Simple regex-based extraction as fallback
-        # Medications: look for common drug names
-        for canonical_name, aliases in MEDICATION_ALIASES.items():
-            for alias in aliases:
-                if alias in text:
-                    candidates.append({
-                        "fact_id": str(uuid4())[:8],
-                        "type": "medication",
-                        "value": {"name": canonical_name},
-                        "confidence": 0.3,
-                        "provenance": {"evidence": [{
-                            "source": chunk.get("source", "transcript"),
-                            "source_id": chunk.get("source_id", "unknown"),
-                            "locator": {},
-                            "snippet": text[:100],
-                            "strength": 0.3
-                        }]},
-                        "normalized": True,
-                        "conflict_group": None
-                    })
-                    break
-    
-    return candidates
 
 
 def _canonicalize_candidates(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

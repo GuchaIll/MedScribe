@@ -196,10 +196,12 @@ def diagnostic_reasoning_node(state: GraphState, ctx: AgentContext) -> GraphStat
 
     reasoning: Dict[str, Any]
 
-    if llm_calls_used < max_llm_calls and ctx and ctx.llm_factory:
+    if llm_calls_used < max_llm_calls and ctx:
         # LLM-powered diagnostic reasoning
         try:
-            llm = ctx.llm_factory()
+            llm = ctx.llm if ctx.llm else (ctx.llm_factory() if ctx.llm_factory else None)
+            if llm is None:
+                raise RuntimeError("No LLM client available")
             llm_calls_used += 1
             reasoning = _llm_diagnostic_reasoning(llm, clinical_summary, specialty)
             reasoning["method"] = "llm"
@@ -419,7 +421,7 @@ Rules:
 - Do NOT fabricate clinical data not present in the summary
 """
 
-    response = llm.generate_response(prompt).strip()
+    response = llm.generate_response(prompt, max_tokens=1500).strip()
 
     # Strip markdown fences
     if response.startswith("```"):

@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from ..state import GraphState, TranscriptSegment
-from ...models.llm import LLMClient
+from ..config import AgentContext
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ in the SAME order:
 _BATCH_SIZE = 5
 
 
-def clean_transcription_node(state: GraphState) -> GraphState:
+def clean_transcription_node(state: GraphState, ctx: AgentContext) -> GraphState:
     """
     Clean transcription segments using the LLM.
 
@@ -68,8 +68,13 @@ def clean_transcription_node(state: GraphState) -> GraphState:
     if not segments:
         return state
 
+    # Get LLM from context singleton
+    llm = ctx.llm if ctx and ctx.llm else None
+    if llm is None and ctx and ctx.llm_factory:
+        llm = ctx.llm_factory()
+
     # ── Try batched cleaning first ──────────────────────────────────────────
-    cleaned_segments = _clean_batch(segments)
+    cleaned_segments = _clean_batch(segments, llm)
 
     state["conversation_log"][-1] = {
         "timestamp": latest_segment["timestamp"],
@@ -92,7 +97,7 @@ def clean_transcription_node(state: GraphState) -> GraphState:
 
 # ── Internal helpers ────────────────────────────────────────────────────────
 
-def _clean_batch(segments: list) -> list:
+def _clean_batch(segments: list, llm=None) -> list:
     """
     Clean segments in batches of up to _BATCH_SIZE per LLM call.
 
@@ -105,7 +110,7 @@ def _clean_batch(segments: list) -> list:
 
         if len(batch) == 1:
             # Single segment — use the simpler prompt directly
-            cleaned.append(_clean_single(batch[0]))
+            cleaned.append(_clean_single(batch[0], llm))
             continue
 
         # Build numbered input for the batch
@@ -115,9 +120,12 @@ def _clean_batch(segments: list) -> list:
         )
 
         try:
-            llm = LLMClient()
+            if llm is None:
+                from ...models.llm import LLMClient
+                llm = LLMClient()
             response = llm.generate_response(
-                _BATCH_PROMPT + f"\n\n{numbered_input}\n"
+                _BATCH_PROMPT + f"\n\n{numbered_input}\n",
+                max_tokens=300,
             )
             logger.debug("Batch LLM response: %s", response)
 
@@ -143,17 +151,20 @@ def _clean_batch(segments: list) -> list:
 
         # Fallback: process each segment individually
         for seg in batch:
-            cleaned.append(_clean_single(seg))
+            cleaned.append(_clean_single(seg, llm))
 
     return cleaned
 
 
-def _clean_single(seg: dict) -> dict:
+def _clean_single(seg: dict, llm=None) -> dict:
     """Clean a single segment via one LLM call."""
     try:
-        llm = LLMClient()
+        if llm is None:
+            from ...models.llm import LLMClient
+            llm = LLMClient()
         response = llm.generate_response(
-            _SINGLE_PROMPT + f"\nTranscription Segment:\n{seg['raw_text']}\n"
+            _SINGLE_PROMPT + f"\nTranscription Segment:\n{seg['raw_text']}\n",
+            max_tokens=200,
         )
         logger.debug("LLM returned response: %s", response)
         result = json.loads(response)
