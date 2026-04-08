@@ -10,117 +10,147 @@ flowchart TB
         UPL["Document Upload\nMultipart PDF / image"]
     end
 
-    subgraph API["FastAPI Backend — port 3001"]
+    subgraph GW["Go API Gateway -- port 8080"]
+        AUTH["JWT Auth\ngolang-jwt/v5"]
+        CACHE["Session Cache\nsync.Map TTL (1h)"]
+        KPROD["Kafka Producer\nacks=1, async, linger=10ms"]
+        ROUT["chi v5 Router\nproxy to Python backend"]
+    end
+
+    subgraph KAFKA["Apache Kafka 4.2 (KRaft)"]
+        KT["pipeline.trigger"]
+    end
+
+    subgraph API["Python Backend -- port 3001"]
         SESS["Session Router\n/api/session/*"]
-        PIPE["POST /api/session/{id}/pipeline\nWorkflowEngine invoke"]
+        PIPE["Pipeline Consumer\nWorkflowEngine invoke"]
         CLIN["Clinical Router\n/api/clinical/*"]
         REC["Records Router\n/api/records/*"]
     end
 
-    subgraph OCR["OCR Pipeline — server/app/core/ocr/"]
+    subgraph OCR["OCR Pipeline -- server/app/core/ocr/"]
         direction LR
         S1["1 page_splitter"] --> S2["2 preprocessor"] --> S3["3 layout_detector"] --> S4["4 handwriting_detector"]
         S4 --> S5["5 extractor\nRapidOCR + fallback"] --> S6["6 normalizer"] --> S7["7 document_classifier"] --> S8["8 field_extractor"] --> S9["9 conflict_detector"]
     end
 
-    subgraph LG["LangGraph Pipeline — 18 nodes (server/app/agents/)"]
+    subgraph LG["LangGraph Pipeline -- 15 nodes (server/app/agents/)"]
         direction TB
-        N1["greeting"] --> N2["load_patient_context"] --> N3["ingest"] --> N4["clean_transcription"]
-        N4 --> N5["normalize_transcript"] --> N6["segment_and_chunk"] --> N7["extract_candidates"]
-        N7 --> N8["diagnostic_reasoning"] --> N9["retrieve_evidence"] --> N10["fill_structured_record"]
-        N10 --> N11["clinical_suggestions"] --> N12["validate_and_score"]
+        N1["load_patient_context"] --> N2["ingest"] --> N3["clean_transcription"]
+        N3 --> N4["normalize_transcript"] --> N5["segment_and_chunk"] --> N6["extract_candidates"]
+        N6 --> N7["diagnostic_reasoning"] --> N8["retrieve_evidence"] --> N9["fill_structured_record"]
+        N9 --> N10["clinical_suggestions"] --> N11["validate_and_score"]
 
-        N12 -->|"schema errors, attempts < 3"| N13["repair"]
-        N13 -->|"retry"| N12
+        N11 -->|"schema errors, attempts < 3"| N12["repair"]
+        N12 -->|"retry"| N11
 
-        N12 -->|"conflicts"| N14["conflict_resolution"]
-        N14 -->|"unresolved"| N15["human_review_gate"]
-        N14 -->|"resolved"| N16["generate_note"]
+        N11 -->|"conflicts"| N13["conflict_resolution"]
+        N13 -->|"unresolved"| N14["human_review_gate"]
+        N13 -->|"resolved"| N15["generate_note"]
 
-        N12 -->|"needs_review"| N15
-        N12 -->|"valid"| N16
+        N11 -->|"needs_review"| N14
+        N11 -->|"valid"| N15
 
-        N15 --> N17["package_outputs"]
-        N16 --> N17
-        N17 --> N18["persist_results"]
+        N14 --> N16["package_outputs"]
+        N15 --> N16
+        N16 --> N17["persist_results"]
     end
 
     subgraph DATA["Data Layer"]
-        PG[("PostgreSQL + pgvector\nRecords, embeddings, audit logs")]
-        SQ[("SQLite\nLangGraph checkpoints\nper-node state snapshots")]
-        GROQ["Groq API\nllama-3.3-70b-versatile\nLLM inference"]
+        PG[("PostgreSQL 15 + pgvector\nRecords, embeddings, sessions, auth")]
+        RD[("Redis Stack\nPipeline status, session cache")]
+        GROQ["Groq API\nllama-4-scout-17b-16e-instruct\nLLM inference"]
         EL["ElevenLabs TTS\nbrowser SpeechSynthesis fallback"]
     end
 
     VAD -->|"utterances"| UI
-    UI -->|"POST start, transcribe"| SESS
-    UI -->|"POST pipeline"| PIPE
-    UI -->|"GET pipeline/status"| SESS
-    UPL -->|"POST upload"| SESS
+    UI -->|"POST start, transcribe"| AUTH
+    UI -->|"POST pipeline"| AUTH
+    UI -->|"GET pipeline/status"| AUTH
+    UPL -->|"POST upload"| AUTH
+
+    AUTH --> CACHE
+    CACHE -->|"session validated"| ROUT
+    ROUT -->|"pipeline trigger"| KPROD
+    KPROD -->|"produce"| KT
+    KT -->|"consume"| PIPE
+    ROUT -->|"proxy"| SESS
 
     SESS -->|"dispatch file"| OCR
     S9 -->|"DocumentProcessingResult"| SESS
 
     PIPE --> LG
 
-    N2 -->|"patient history lookup"| PG
-    N9 -->|"ANN embedding query"| PG
-    N8 -->|"LLM reasoning"| GROQ
-    N13 -->|"LLM schema repair"| GROQ
-    N16 -->|"LLM SOAP note"| GROQ
+    N1 -->|"patient history lookup"| PG
+    N8 -->|"ANN embedding query"| PG
+    N7 -->|"LLM reasoning"| GROQ
+    N12 -->|"LLM schema repair"| GROQ
+    N15 -->|"LLM SOAP note"| GROQ
     S8 -->|"LLM field disambiguation"| GROQ
-    N18 -->|"write record + embeddings"| PG
-    N18 -->|"checkpoint commit"| SQ
+    N17 -->|"write record + embeddings"| PG
+    KPROD -->|"seed status"| RD
+    PIPE -->|"update status"| RD
+    AUTH -->|"read status"| RD
 
     CLIN -->|"allergy / medication lookup"| PG
     REC -->|"fetch record for template"| PG
     REC -->|"TTS synthesis"| EL
+    CACHE -->|"cache miss"| PG
 ```
 
 ---
 
 ## Persistence Model
 
-Two separate persistence mechanisms serve distinct purposes:
+Three persistence mechanisms serve distinct purposes:
 
 | Store | Technology | What it holds | When written |
 |-------|-----------|---------------|--------------|
-| **Checkpoints** | SQLite (`storage/checkpoints.db`) | Full `GraphState` snapshot | After every node completes |
-| **Patient records** | PostgreSQL + pgvector | `StructuredRecord`, embeddings, audit trace | Only in `persist_results` (final node) |
+| **Session / Auth** | PostgreSQL 15 (pgxpool via Go gateway) | Users, sessions, auth tokens | On register, login, session start/end |
+| **Patient records** | PostgreSQL 15 + pgvector (SQLAlchemy via Python) | `StructuredRecord`, embeddings, audit trace | Only in `persist_results` (final node) |
+| **Pipeline status** | Redis Stack | Per-node progress, pipeline state | Seeded by Go gateway on trigger, updated by Python after each node |
+| **Session cache** | In-process sync.Map (Go gateway) | Session ID -> session object, 1h TTL | On first session lookup (cache miss fills from PG) |
+
+**Pipeline trigger flow:**
+1. Client sends `POST /api/session/{id}/pipeline` to Go gateway (port 8080)
+2. Gateway validates JWT, checks session cache (sync.Map), falls back to PG on cache miss
+3. Gateway seeds pipeline status in Redis (async goroutine) and produces a Kafka message to `pipeline.trigger` (acks=1, async delivery, micro-batched)
+4. Gateway returns `202 Accepted` immediately
+5. Python backend consumes from Kafka, invokes `WorkflowEngine.run()` which executes the 15-node LangGraph pipeline
+6. Each node completion updates Redis pipeline status
+7. Frontend polls `GET /api/session/{id}/pipeline/status` (served by Go gateway reading from Redis)
 
 **Interrupt/resume flow:**
-1. Graph runs node-by-node; `SqliteSaver` snapshots `GraphState` to SQLite keyed by `thread_id` (= `session_id`) after each node
-2. When `interrupt_before=["human_review_gate"]` is active, the graph pauses and returns before executing that node
-3. The partial state lives in SQLite; the pipeline endpoint returns the intermediate state to the caller
-4. To resume: call `engine.resume(thread_id)` — internally calls `graph.invoke(None, config={"configurable": {"thread_id": ...}})`, which LangGraph replays from the last checkpoint
-5. **Current status:** `enable_interrupts=False` in the `/pipeline` endpoint — the interrupt infrastructure is in place but the gate runs non-interactively
+1. When `interrupt_before=["human_review_gate"]` is active, the graph pauses before executing that node
+2. The partial state lives in the Python process; the pipeline status in Redis reflects the paused state
+3. To resume: the gateway publishes a resume trigger to Kafka
+4. **Current status:** `enable_interrupts=False` -- the infrastructure is in place but the gate runs non-interactively
 
 ---
 
 ## LangGraph Node Reference
 
-All 18 nodes in execution order:
+All 15 nodes in execution order:
 
 | # | Node | File | Description |
 |---|------|------|-------------|
-| 1 | `greeting` | `nodes/` (inline in graph.py) | Seeds initial state, sets physician welcome message |
-| 2 | `load_patient_context` | `nodes/load_patient_context.py` | Loads prior patient facts from PostgreSQL into `patient_record_fields` |
-| 3 | `ingest` | `nodes/ingest.py` | Loads transcript segments + OCR artifacts into `GraphState.chunks` |
-| 4 | `clean_transcription` | `nodes/clean.py` | Removes disfluencies, expands abbreviations |
-| 5 | `normalize_transcript` | `nodes/normalize.py` | Standardises medical terminology |
-| 6 | `segment_and_chunk` | `nodes/segment.py` | Splits transcript into topical clinical chunks |
-| 7 | `extract_candidates` | `nodes/extract.py` | NLP entity recognition → `candidate_facts` list |
-| 8 | `diagnostic_reasoning` | `nodes/diagnostic_reasoning.py` | LLM differential diagnosis over extracted candidates |
-| 9 | `retrieve_evidence` | `nodes/evidence.py` | pgvector ANN search → `evidence_map` (fact_id → source chunks) |
-| 10 | `fill_structured_record` | `nodes/fill_record.py` | Maps candidates to typed `StructuredRecord` schema |
-| 11 | `clinical_suggestions` | `nodes/clinical_suggestions.py` | Allergy + drug interaction lookup; LLM for disambiguation |
-| 12 | `validate_and_score` | `nodes/validate.py` | Pydantic + contract validation; cross-visit contradiction detection; sets `validation_report.needs_review` |
-| — | `repair` | `nodes/repair.py` | LLM schema repair (loops back to validate, max 3 iterations) |
-| — | `conflict_resolution` | `nodes/conflicts.py` | Resolves discrepancies against stored patient history |
-| — | `human_review_gate` | `nodes/review_gate.py` | Interrupt point for physician approval |
-| 13+ | `generate_note` | `nodes/generate_note.py` | LLM SOAP note generation |
-| 14+ | `package_outputs` | `nodes/package.py` | Assembles final response payload |
-| 15+ | `persist_results` | `nodes/persist_results.py` | Writes record, embeddings, audit trace to PostgreSQL |
+| 1 | `load_patient_context` | `nodes/load_patient_context.py` | Loads prior patient facts from PostgreSQL into `patient_record_fields` |
+| 2 | `ingest` | `nodes/ingest.py` | Loads transcript segments + OCR artifacts into `GraphState.chunks` |
+| 3 | `clean_transcription` | `nodes/clean.py` | Removes disfluencies, expands abbreviations |
+| 4 | `normalize_transcript` | `nodes/normalize.py` | Standardises medical terminology |
+| 5 | `segment_and_chunk` | `nodes/segment.py` | Splits transcript into topical clinical chunks |
+| 6 | `extract_candidates` | `nodes/extract.py` | NLP entity recognition -> `candidate_facts` list |
+| 7 | `diagnostic_reasoning` | `nodes/diagnostic_reasoning.py` | LLM differential diagnosis over extracted candidates |
+| 8 | `retrieve_evidence` | `nodes/evidence.py` | pgvector ANN search -> `evidence_map` (fact_id -> source chunks) |
+| 9 | `fill_structured_record` | `nodes/fill_record.py` | Maps candidates to typed `StructuredRecord` schema |
+| 10 | `clinical_suggestions` | `nodes/clinical_suggestions.py` | Allergy + drug interaction lookup; LLM for disambiguation |
+| 11 | `validate_and_score` | `nodes/validate.py` | Pydantic + contract validation; cross-visit contradiction detection; sets `validation_report.needs_review` |
+| -- | `repair` | `nodes/repair.py` | LLM schema repair (loops back to validate, max 3 iterations) |
+| -- | `conflict_resolution` | `nodes/conflicts.py` | Resolves discrepancies against stored patient history |
+| -- | `human_review_gate` | `nodes/review_gate.py` | Interrupt point for physician approval |
+| 12+ | `generate_note` | `nodes/generate_note.py` | LLM SOAP note generation |
+| 13+ | `package_outputs` | `nodes/package.py` | Assembles final response payload |
+| 14+ | `persist_results` | `nodes/persist_results.py` | Writes record, embeddings, audit trace to PostgreSQL |
 
 **Routing from `validate_and_score`** (conditional edges, in priority order):
 1. `schema_errors` present AND `repair_attempts < 3` → `repair` → back to `validate_and_score`

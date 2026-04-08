@@ -1,9 +1,13 @@
 # MedScribe — Docker Compose (Development)
 #
-# Starts all three services with hot-reload:
-#   db      — PostgreSQL 15 + pgvector
-#   api     — FastAPI backend (uvicorn --reload), runs migrations on startup
-#   client  — React dev server (npm start), proxies /api to the api service
+# Services:
+#   db        — PostgreSQL 15 + pgvector
+#   redis     — Redis 7 (pipeline status, session cache)
+#   kafka     — Apache Kafka 4.2 (KRaft mode, no ZooKeeper)
+#   kafka-init— One-shot topic bootstrapper
+#   gateway   — Go API gateway (chi, pgx, confluent-kafka, go-redis)
+#   api       — Python FastAPI backend (LangGraph pipeline, uvicorn --reload)
+#   client    — React dev server (CRA, proxies /api to gateway)
 #
 # Prerequisites:
 #   1. Copy .env.example to .env in the project root and fill in your keys.
@@ -13,9 +17,11 @@
 #   docker compose up          # start all services
 #   docker compose up --build  # rebuild images (after dependency changes)
 #   docker compose down        # stop and remove containers
-#   docker compose down -v     # also remove the database volume
+#   docker compose down -v     # also remove database + kafka volumes
 
 services:
+
+  # --- Infrastructure ---
 
   db:
     image: pgvector/pgvector:pg15
@@ -33,6 +39,118 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis/redis-stack-server:latest
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  kafka:
+    image: apache/kafka:4.2.0
+    environment:
+      # KRaft mode (no ZooKeeper)
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      CLUSTER_ID: MedScribeDevCluster0001
+    ports:
+      - "9092:9092"
+    tmpfs:
+      - /tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+  # One-shot: create Kafka topics then exit.
+  kafka-init:
+    image: apache/kafka:4.2.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "--- Creating Kafka topics ---"
+
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --create --if-not-exists \
+          --topic audio.ingest \
+          --partitions 3 \
+          --replication-factor 1 \
+          --config retention.ms=3600000 \
+          --config cleanup.policy=delete
+
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --create --if-not-exists \
+          --topic transcript.segments \
+          --partitions 3 \
+          --replication-factor 1 \
+          --config retention.ms=86400000 \
+          --config cleanup.policy=delete
+
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --create --if-not-exists \
+          --topic pipeline.trigger \
+          --partitions 3 \
+          --replication-factor 1 \
+          --config retention.ms=86400000 \
+          --config cleanup.policy=delete
+
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --create --if-not-exists \
+          --topic pipeline.results \
+          --partitions 3 \
+          --replication-factor 1 \
+          --config retention.ms=86400000 \
+          --config cleanup.policy=delete
+
+        echo "--- Kafka topics created ---"
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
+    restart: "no"
+
+  # --- Application ---
+
+  gateway:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/medscribe?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BROKERS: kafka:9092
+      PYTHON_BACKEND_URL: http://api:3001
+      LOG_LEVEL: debug
+      GOMAXPROCS: "4"
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
   api:
     build:
       context: ./server
@@ -44,14 +162,19 @@ services:
       # Loads GROQ_API_KEY, SECRET_KEY, ELEVENLABS_API_KEY, etc. from project root .env
       - .env
     environment:
-      # Override DATABASE_URL so it targets the db container, not localhost
       DATABASE_URL: postgresql://postgres:postgres@db:5432/medscribe
-      # Use the Groq API LLM — do not attempt to load local PyTorch models
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BROKERS: kafka:9092
       LLM_MODEL: api
+      LLM_NAME: meta-llama/llama-4-scout-17b-16e-instruct
     ports:
       - "3001:3001"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
 
   client:
@@ -59,18 +182,17 @@ services:
       context: ./client/medscribe
       dockerfile: Dockerfile.dev
     volumes:
-      # Mount src and public for hot-reload; leave node_modules in the image
       - ./client/medscribe/src:/app/src
       - ./client/medscribe/public:/app/public
     environment:
-      # Point the CRA dev-server proxy at the api service (see src/setupProxy.js)
-      REACT_APP_API_TARGET: http://api:3001
-      # Disable host check so the Docker host can reach the dev server
+      # Point the CRA dev-server proxy at the Go gateway
+      REACT_APP_API_TARGET: http://gateway:8080
       DANGEROUSLY_DISABLE_HOST_CHECK: "true"
     ports:
       - "3000:3000"
     depends_on:
-      - api
+      - gateway
 
 volumes:
   db_data:
+  redis_data:

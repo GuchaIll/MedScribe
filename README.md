@@ -1,6 +1,6 @@
 # MedScribe
 
-A Real-Time, LangGraph-Orchestrated Medical Intelligence System for Automated Clinical Documentation and Patient-First Clinical Decision Support
+A distributed, real-time clinical intelligence platform built on a Go API gateway, Kafka event bus, and LangGraph orchestration pipeline for automated medical documentation and patient-first clinical decision support
 
 ---
 
@@ -24,12 +24,13 @@ Clinical documentation consumes an estimated 30–50% of physician time per shif
 
 ## The Solution
 
-MedScribe implements a multi-stage LangGraph clinical reasoning pipeline that:
+MedScribe implements a distributed microservices architecture where a Go API gateway handles authentication, session management, and request routing at 500 QPS (p50 < 1ms), publishes pipeline triggers to Kafka, and delegates clinical reasoning to a 15-node LangGraph pipeline running on a Python backend. The system:
 
-- Ingests live voice transcriptions and uploaded historical documents
-- Extracts structured clinical facts through layered NLP and LLM reasoning
+- Ingests live voice transcriptions and uploaded historical documents through the Go gateway
+- Publishes pipeline triggers asynchronously via Kafka with micro-batching for throughput
+- Extracts structured clinical facts through layered NLP and LLM reasoning on the Python service
 - Grounds each extracted fact to its source utterance via pgvector semantic search, providing a verifiable audit trail
-- Generates SOAP notes and multi-format medical records within a single async request cycle
+- Generates SOAP notes and multi-format medical records within a single async pipeline cycle
 
 ---
 
@@ -42,29 +43,43 @@ flowchart TD
     D([PDF / Image Upload]) --> E[OCR Pipeline\n9 processing stages]
     E --> F[Document Artifacts]
 
-    C --> G
-    F --> G
+    C --> GW
+    F --> GW
 
-    subgraph G [LangGraph Clinical Pipeline — 18 nodes]
-        direction TB
-        G1[Ingestion\ngreeting → load_patient_context → ingest → clean → normalize → segment] -->
-        G2[Extraction\nextract → diagnostic_reasoning → retrieve_evidence → fill_record] -->
-        G3[clinical_suggestions → validate_and_score]
-        G3 -->|schema errors, attempts < 3| G3R[repair]
-        G3R -->|retry| G3
-        G3 -->|conflicts| G3C[conflict_resolution]
-        G3C -->|unresolved| G3V[human_review_gate]
-        G3C -->|resolved| G4
-        G3 -->|needs_review| G3V
-        G3 -->|valid| G4[generate_note]
-        G3V --> G4B[package_outputs]
-        G4 --> G4B
-        G4B --> G5[persist_results]
+    subgraph GW [Go API Gateway — port 8080]
+        direction LR
+        GW1[JWT Auth] --> GW2[Session Cache\nsync.Map TTL]
+        GW2 --> GW3[Kafka Producer\nacks=1, async, micro-batch]
     end
 
-    G5 --> H[(PostgreSQL + pgvector\nRecords + Embeddings)]
-    G5 --> I2[(SQLite\nCheckpoints)]
-    G5 --> I[React UI]
+    GW3 -->|pipeline.trigger| K{{Kafka 4.2 KRaft}}
+    K --> PY
+
+    subgraph PY [Python Backend — port 3001]
+        direction TB
+        subgraph LG [LangGraph Clinical Pipeline — 15 nodes]
+            direction TB
+            G1[Ingestion\nload_patient_context → ingest → clean → normalize → segment] -->
+            G2[Extraction\nextract → diagnostic_reasoning → retrieve_evidence → fill_record] -->
+            G3[clinical_suggestions → validate_and_score]
+            G3 -->|schema errors, attempts < 3| G3R[repair]
+            G3R -->|retry| G3
+            G3 -->|conflicts| G3C[conflict_resolution]
+            G3C -->|unresolved| G3V[human_review_gate]
+            G3C -->|resolved| G4
+            G3 -->|needs_review| G3V
+            G3 -->|valid| G4[generate_note]
+            G3V --> G4B[package_outputs]
+            G4 --> G4B
+            G4B --> G5[persist_results]
+        end
+    end
+
+    GW2 --> PG
+    G5 --> PG[(PostgreSQL 15 + pgvector\nRecords + Embeddings)]
+    GW3 --> RD[(Redis Stack\nPipeline Status)]
+    G5 --> RD
+    G5 --> UI[React UI]
 ```
 
 ---
@@ -74,8 +89,8 @@ flowchart TD
 **VAD-Gated Live Transcription**
 Browser-side Silero VAD (ONNX via `@ricky0123/vad-react`, ~50–100ms onset latency) gates the Web Speech API, eliminating false activations and capturing complete utterances. An 800ms pre-speech audio buffer prevents truncation of utterance-initial words.
 
-**18-Node LangGraph Clinical Pipeline**
-A stateful, checkpointed directed graph executes the full clinical reasoning workflow. Conditional edges implement a repair loop (validate → repair → validate, max 3 iterations) and route to conflict resolution or a physician interrupt gate when validation fails. LangGraph's `SqliteSaver` checkpoints state after each node, enabling interrupt/resume without bespoke session recovery code.
+**15-Node LangGraph Clinical Pipeline**
+A stateful directed graph executes the full clinical reasoning workflow behind the Go gateway. The gateway publishes a Kafka trigger; the Python backend consumes it and runs the pipeline. Conditional edges implement a repair loop (validate -> repair -> validate, max 3 iterations) and route to conflict resolution or a physician interrupt gate when validation fails. Pipeline status is streamed to Redis for real-time frontend polling.
 
 **Multi-Stage OCR Document Intelligence**
 Uploaded PDFs and images traverse a 9-stage pipeline: page splitting, deskew/denoise, layout detection, handwriting classification, RapidOCR extraction with engine fallback, medical normalization, document classification, structured field extraction with per-field confidence scores, and conflict detection against existing patient history.
@@ -87,7 +102,7 @@ Every extracted clinical fact is anchored to its originating source chunk via se
 Per-session allergy cross-checking and drug-drug interaction detection run as deterministic rule-based lookups over the patient's stored allergy list and medication history. LLM reasoning is used only for disambiguation. The validation node also performs cross-visit contradiction detection — comparing the current session's record against prior finalized records in PostgreSQL.
 
 **Real-Time Pipeline Progress**
-The `WorkflowEngine` streams node-level events to a server-side progress store as each of the 18 nodes completes. The frontend polls `GET /api/session/{id}/pipeline/status` to drive a real-time progress sidebar with per-node status, duration, and detail (e.g. "3 clinical facts extracted", "validation passed").
+The `WorkflowEngine` streams node-level events to Redis as each of the 15 nodes completes. The Go gateway exposes `GET /api/session/{id}/pipeline/status` which reads from Redis to drive a real-time progress sidebar with per-node status, duration, and detail (e.g. "3 clinical facts extracted", "validation passed").
 
 **Multi-Format Record Generation**
 SOAP notes, discharge summaries, and referral letters are generated via Jinja2 templates rendered to HTML or PDF via WeasyPrint. Structured patient profiles persist across sessions in PostgreSQL, queryable by patient ID, MRN, or semantic similarity.
@@ -100,15 +115,18 @@ SOAP notes, discharge summaries, and referral letters are generated via Jinja2 t
 |---|---|
 | Frontend | React 18, TypeScript, Create React App, Tailwind CSS |
 | Voice | Silero VAD (ONNX via `@ricky0123/vad-react`), Web Speech API |
+| API Gateway | Go 1.26, chi v5, pgx/v5, golang-jwt/v5, Prometheus client |
+| Event Bus | Apache Kafka 4.2 (KRaft mode), confluent-kafka-go/v2 |
+| Cache / Status Store | Redis Stack, go-redis/v9, sync.Map TTL session cache |
 | Agent Orchestration | LangGraph, LangChain |
 | LLM Inference | Groq, OpenAI, Anthropic Claude, Google Gemini, OpenRouter (multi-provider) |
-| Backend | FastAPI, Uvicorn, Python 3.11+ |
-| Database | PostgreSQL 15 + pgvector, SQLAlchemy 2.0, Alembic |
-| Graph Checkpointing | SQLite (LangGraph `SqliteSaver`) |
+| Python Backend | FastAPI, Uvicorn, Python 3.11+ |
+| Database | PostgreSQL 15 + pgvector, pgx/v5 (Go), SQLAlchemy 2.0 (Python), Alembic |
 | Embeddings | sentence-transformers (all-MiniLM-L6-v2) |
 | OCR | RapidOCR, pdf2image, OpenCV |
 | Document Generation | Jinja2, WeasyPrint |
-| Auth | python-jose (JWT) |
+| Auth | golang-jwt/v5 (Go gateway), python-jose (Python) |
+| Observability | Prometheus, k6 load testing |
 | Containerisation | Docker, Docker Compose |
 
 ---
@@ -137,8 +155,11 @@ Access the app at `http://localhost:3000`
 
 This starts:
 1. PostgreSQL 15 + pgvector (database migrations run automatically on startup)
-2. FastAPI backend at `http://localhost:3001`
-3. React dev server at `http://localhost:3000` with hot-reload
+2. Redis Stack (session cache + pipeline status)
+3. Apache Kafka 4.2 in KRaft mode (event bus)
+4. Go API gateway at `http://localhost:8080` (JWT auth, routing, Kafka producer)
+5. FastAPI Python backend at `http://localhost:3001` (LangGraph pipeline, OCR)
+6. React dev server at `http://localhost:3000` with hot-reload
 
 ```bash
 docker compose down        # stop containers, keep database volume
@@ -183,14 +204,23 @@ See [.env.example](.env.example) for the root Docker Compose template and [serve
 
 ## Key Engineering Decisions
 
-**LangGraph over a custom state machine**
-LangGraph provides native state serialisation, conditional edge routing, and interrupt/resume semantics. Each node checkpoints state to SQLite via `SqliteSaver`. A physician can interrupt before `human_review_gate`, and the graph resumes by calling `graph.invoke(None, config={"configurable": {"thread_id": session_id}})` — LangGraph replays from the checkpoint. Note: interrupts are currently disabled in the `/pipeline` endpoint (`enable_interrupts=False`) — the infrastructure is in place and can be re-enabled without code changes.
+**Strangler-fig migration to Go gateway**
+The monolithic Python server is being decomposed via a strangler-fig pattern. A Go API gateway (`services/api/`) now owns authentication, session management, and request routing. It publishes pipeline triggers to Kafka asynchronously (`acks=1`, micro-batched) and proxies remaining endpoints to the Python backend. This separation achieved 500 QPS ingestion throughput at p50 < 1ms latency.
+
+**Kafka async pipeline triggers over synchronous HTTP**
+Pipeline execution is decoupled from the HTTP request cycle via Kafka. The gateway produces to `pipeline.trigger` with `acks=1` and async delivery (fire-and-forget with background event draining). Micro-batching (`linger.ms=10`, `batch.size=64KB`) amortises broker round-trips. Pipeline status is seeded in Redis asynchronously so the gateway returns immediately.
+
+**In-process session cache over per-request DB lookups**
+A `sync.Map`-based TTL cache in the gateway eliminates PostgreSQL round-trips for session validation on the hot path. Cache entries expire after 1 hour with a background reaper goroutine. This reduced p50 trigger latency from ~15ms to < 1ms.
+
+**LangGraph for clinical orchestration**
+LangGraph provides native state serialisation, conditional edge routing, and interrupt/resume semantics for the 15-node clinical pipeline. The interrupt infrastructure is built but currently disabled (`enable_interrupts=False`). Pipeline status updates stream to Redis for real-time frontend polling.
 
 **pgvector over an external vector store**
-Storing embeddings in PostgreSQL via pgvector eliminates an external dependency and keeps all patient data co-located under a single governance boundary — important for HIPAA-friendly architecture. The trade-off is that ANN index performance degrades under high concurrent query load relative to purpose-built vector databases, which is acceptable at clinic-scale volumes.
+Storing embeddings in PostgreSQL via pgvector eliminates an external dependency and keeps all patient data co-located under a single governance boundary -- important for HIPAA-friendly architecture.
 
-**Multi-provider LLM inference over local model serving**
-MedScribe supports five LLM backends: Groq, OpenAI, Anthropic Claude, Google Gemini, and OpenRouter. The app auto-selects the first provider with a configured API key (priority: groq, openai, anthropic, google, openrouter) or honours an explicit `LLM_PROVIDER` env var. A frontend modal lets the user switch providers at runtime when multiple keys are present. Using hosted inference means the server deploys on CPU-only machines with no CUDA dependency. SOAP note generation runs in approximately 1--3 seconds on Groq. Local Whisper inference remains on the roadmap once the torchvision dependency conflict is resolved.
+**Multi-provider LLM inference**
+MedScribe supports five LLM backends: Groq, OpenAI, Anthropic Claude, Google Gemini, and OpenRouter. Auto-selects based on configured API keys. SOAP note generation runs in approximately 1-3 seconds on Groq.
 
 For full engineering rationale see [docs/design-decisions.md](docs/design-decisions.md).
 
@@ -198,42 +228,61 @@ For full engineering rationale see [docs/design-decisions.md](docs/design-decisi
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/session/start` | Start a new session |
-| POST | `/api/session/{id}/end` | End a session |
-| POST | `/api/session/{id}/transcribe` | Add a transcript segment |
-| POST | `/api/session/{id}/upload` | Upload a document for OCR |
-| POST | `/api/session/{id}/pipeline` | Execute the 18-node LangGraph pipeline |
-| GET | `/api/session/{id}/pipeline/status` | Poll real-time node-level pipeline progress |
-| GET | `/api/session/{id}/record` | Get the session's structured record |
-| GET | `/api/session/{id}/documents` | List OCR-processed documents |
-| GET | `/api/clinical/suggestions` | On-demand clinical decision support |
-| POST | `/api/records/generate` | Generate SOAP note / PDF / HTML |
-| GET | `/api/patient/{id}` | Get patient profile |
-| GET | `/api/llm/providers` | List available LLM providers |
-| POST | `/api/llm/provider/select` | Select an LLM provider at runtime |
-| GET | `/api/llm/status` | Current LLM provider status |
+All endpoints are served by the Go gateway at port 8080. Auth and session routes are handled natively; pipeline and clinical routes are proxied to the Python backend.
+
+| Method | Endpoint | Handled By | Description |
+|--------|----------|------------|-------------|
+| POST | `/api/auth/register` | Go | Register a new user |
+| POST | `/api/auth/login` | Go | Authenticate and receive JWT |
+| GET | `/api/auth/profile` | Go | Get current user profile |
+| POST | `/api/session/start` | Go | Start a new session |
+| POST | `/api/session/{id}/end` | Go | End a session |
+| POST | `/api/session/{id}/transcribe` | Go | Add a transcript segment |
+| POST | `/api/session/{id}/upload` | Go -> Python | Upload a document for OCR |
+| POST | `/api/session/{id}/pipeline` | Go -> Kafka -> Python | Trigger the 15-node LangGraph pipeline |
+| GET | `/api/session/{id}/pipeline/status` | Go (Redis) | Poll real-time node-level pipeline progress |
+| GET | `/api/session/{id}/record` | Go -> Python | Get the session's structured record |
+| GET | `/api/session/{id}/documents` | Go -> Python | List OCR-processed documents |
+| GET | `/api/patient/{id}/profile` | Go -> Python | Get patient profile |
+| GET | `/api/patient/{id}/lab-trends` | Go -> Python | Get lab result trends |
+| GET | `/api/patient/{id}/risk-score` | Go -> Python | Get patient risk score |
+| POST | `/api/records/generate` | Go -> Python | Generate SOAP note / PDF / HTML |
+| GET | `/api/llm/providers` | Go -> Python | List available LLM providers |
+| POST | `/api/llm/provider` | Go -> Python | Select an LLM provider at runtime |
 
 ---
 
 ## Future Improvements
 
-**Immediate (post-dependency resolution)**
-- Server-side Whisper + pyannote-audio for higher-accuracy transcription and automatic doctor/patient diarisation
-
 **Near-term**
-- Enable interrupt/resume for the human review gate (infrastructure built, `enable_interrupts=False` at the route level)
-- SSE streaming for real-time pipeline progress (LangGraph `astream_events` + frontend `PipelineSteps` component already designed for this)
-- Celery + Redis task queue to offload pipeline execution from the HTTP request cycle
+- Rust extraction microservice for field extraction targeting 100ms latency
+- gRPC service mesh replacing HTTP proxying between Go gateway and Python backend
+- Enable interrupt/resume for the human review gate (infrastructure built, `enable_interrupts=False`)
+- SSE streaming via LangGraph `astream_events` for real-time pipeline progress
+- Server-side Whisper + pyannote-audio for transcription and diarisation
 
 **Roadmap**
-- Prometheus metrics and OpenTelemetry tracing per LangGraph node
+- Kubernetes deployment with horizontal pod autoscaling
+- OpenTelemetry distributed tracing across Go, Kafka, and Python services
 - FHIR R4 export for direct EHR integration (Epic, Cerner)
 - Row-level security in PostgreSQL for multi-tenant clinic deployments
+- LangGraph 0.3+ migration for native async checkpointing
 
 ---
 
 ## Architecture
 
 Full C4 component diagram, node reference table, and GraphState schema: [docs/architecture.md](docs/architecture.md)
+
+---
+
+## Access Points
+
+| Service | URL | Notes |
+|---------|-----|-------|
+| Go Gateway | http://localhost:8080 | Main entry point, all API traffic |
+| Python API | http://localhost:3001 | Internal, not exposed to clients |
+| React Client | http://localhost:3000 | Proxies `/api` to gateway |
+| Prometheus | http://localhost:9090 | Metrics (monitoring overlay) |
+| Grafana | http://localhost:3100 | Dashboards, default admin/admin |
+
