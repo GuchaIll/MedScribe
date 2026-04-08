@@ -1,22 +1,30 @@
 """
-Pipeline progress tracking — thread-safe in-memory store.
+Pipeline progress tracking -- Redis-backed store.
 
 Each session gets a PipelineProgress record that is updated
 as the LangGraph workflow streams node-level events.  The
-/api/session/{id}/pipeline/status endpoint reads this store
-so the React frontend can poll for real-time progress.
+Go API gateway reads the same Redis key via
+GET /session/{id}/pipeline/status so the React frontend can
+poll for real-time progress regardless of which process is running.
+
+Falls back to in-memory storage when Redis is unavailable (local dev).
 """
 
 from __future__ import annotations
 
+import json
+import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Literal, Optional
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
-# Node catalogue — single source of truth for labels + phases
+# Node catalogue -- single source of truth for labels + phases
 # ---------------------------------------------------------------------------
 
 NodeStatus = Literal["pending", "running", "completed", "failed", "skipped"]
@@ -111,14 +119,103 @@ class PipelineProgress:
 # ---------------------------------------------------------------------------
 
 class PipelineProgressStore:
-    """Thread-safe in-memory store keyed by session_id."""
+    """
+    Redis-backed store keyed by session_id. Compatible with the Go API
+    gateway which reads the same ``pipeline:progress:{session_id}`` key.
+
+    Falls back to an in-memory dict when Redis is unavailable so that
+    local development without Redis still works.
+    """
+
+    # Redis key prefix. The Go gateway reads ``pipeline:{session_id}`` for
+    # top-level status (pending/running/completed/failed). This store writes
+    # the detailed per-node progress to a separate key so both coexist.
+    _KEY_PREFIX = "pipeline:progress:"
+    _TTL_SECONDS = 86400  # 24 hours
 
     def __init__(self) -> None:
-        self._store: Dict[str, PipelineProgress] = {}
+        self._fallback: Dict[str, PipelineProgress] = {}
         self._lock = threading.Lock()
-        self._node_start_times: Dict[str, float] = {}  # session+node → wall time
+        self._node_start_times: Dict[str, float] = {}
+        self._redis = None
+        self._redis_available = False
+        self._connect_redis()
 
-    # ── Lifecycle ───────────────────────────────────────────────────────────
+    def _connect_redis(self) -> None:
+        """Best-effort Redis connection at startup."""
+        redis_url = os.environ.get("REDIS_URL", "")
+        if not redis_url:
+            logger.info("pipeline_progress: REDIS_URL not set, using in-memory fallback")
+            return
+        try:
+            import redis as _redis
+            self._redis = _redis.from_url(redis_url, decode_responses=True)
+            self._redis.ping()
+            self._redis_available = True
+            logger.info("pipeline_progress: connected to Redis at %s", redis_url)
+        except Exception as exc:
+            logger.warning("pipeline_progress: Redis unavailable (%s), using in-memory fallback", exc)
+            self._redis = None
+            self._redis_available = False
+
+    def _key(self, session_id: str) -> str:
+        return f"{self._KEY_PREFIX}{session_id}"
+
+    def _save(self, session_id: str, progress: PipelineProgress) -> None:
+        """Persist progress to Redis (or fallback dict)."""
+        if self._redis_available:
+            try:
+                self._redis.set(
+                    self._key(session_id),
+                    json.dumps(progress.to_dict()),
+                    ex=self._TTL_SECONDS,
+                )
+                return
+            except Exception as exc:
+                logger.warning("pipeline_progress: Redis write failed (%s), falling back", exc)
+        with self._lock:
+            self._fallback[session_id] = progress
+
+    def _load(self, session_id: str) -> Optional[PipelineProgress]:
+        """Load progress from Redis (or fallback dict)."""
+        if self._redis_available:
+            try:
+                raw = self._redis.get(self._key(session_id))
+                if raw:
+                    return self._from_dict(json.loads(raw), session_id)
+            except Exception as exc:
+                logger.warning("pipeline_progress: Redis read failed (%s), falling back", exc)
+        with self._lock:
+            return self._fallback.get(session_id)
+
+    @staticmethod
+    def _from_dict(data: dict, session_id: str) -> PipelineProgress:
+        """Reconstruct a PipelineProgress from its serialised form."""
+        nodes = [
+            NodeProgress(
+                name=n["name"],
+                label=n["label"],
+                phase=n["phase"],
+                description=n.get("description", ""),
+                status=n.get("status", "pending"),
+                started_at=n.get("started_at"),
+                completed_at=n.get("completed_at"),
+                duration_ms=n.get("duration_ms"),
+                detail=n.get("detail"),
+            )
+            for n in data.get("nodes", [])
+        ]
+        return PipelineProgress(
+            session_id=session_id,
+            status=data.get("status", "idle"),
+            current_node=data.get("current_node"),
+            nodes=nodes,
+            started_at=data.get("started_at"),
+            completed_at=data.get("completed_at"),
+            error=data.get("error"),
+        )
+
+    # -- Lifecycle -----------------------------------------------------------
 
     def init_pipeline(self, session_id: str) -> PipelineProgress:
         """Create or reset progress for a session and mark the first node running."""
@@ -132,24 +229,22 @@ class PipelineProgressStore:
             started_at=datetime.now().isoformat(),
             nodes=nodes,
         )
-        with self._lock:
-            self._store[session_id] = progress
-            self._node_start_times.clear()
-        # Pre-warm: mark the first node as running
+        self._node_start_times.clear()
+        self._save(session_id, progress)
         self.mark_node_running(session_id, PIPELINE_NODE_DEFS[0][0])
         return progress
 
     def mark_node_running(self, session_id: str, node_name: str) -> None:
-        with self._lock:
-            progress = self._store.get(session_id)
-            if not progress:
-                return
-            progress.current_node = node_name
-            self._node_start_times[f"{session_id}:{node_name}"] = time.monotonic()
-            for n in progress.nodes:
-                if n.name == node_name and n.status == "pending":
-                    n.status = "running"
-                    n.started_at = datetime.now().isoformat()
+        progress = self._load(session_id)
+        if not progress:
+            return
+        progress.current_node = node_name
+        self._node_start_times[f"{session_id}:{node_name}"] = time.monotonic()
+        for n in progress.nodes:
+            if n.name == node_name and n.status == "pending":
+                n.status = "running"
+                n.started_at = datetime.now().isoformat()
+        self._save(session_id, progress)
 
     def mark_node_completed(
         self,
@@ -157,22 +252,22 @@ class PipelineProgressStore:
         node_name: str,
         detail: Optional[str] = None,
     ) -> None:
-        with self._lock:
-            progress = self._store.get(session_id)
-            if not progress:
-                return
-            key = f"{session_id}:{node_name}"
-            elapsed_ms = None
-            if key in self._node_start_times:
-                elapsed_ms = (time.monotonic() - self._node_start_times.pop(key)) * 1000
-            for n in progress.nodes:
-                if n.name == node_name:
-                    n.status = "completed"
-                    n.completed_at = datetime.now().isoformat()
-                    n.duration_ms = round(elapsed_ms, 1) if elapsed_ms else None
-                    if detail:
-                        n.detail = detail
-                    break
+        progress = self._load(session_id)
+        if not progress:
+            return
+        key = f"{session_id}:{node_name}"
+        elapsed_ms = None
+        if key in self._node_start_times:
+            elapsed_ms = (time.monotonic() - self._node_start_times.pop(key)) * 1000
+        for n in progress.nodes:
+            if n.name == node_name:
+                n.status = "completed"
+                n.completed_at = datetime.now().isoformat()
+                n.duration_ms = round(elapsed_ms, 1) if elapsed_ms else None
+                if detail:
+                    n.detail = detail
+                break
+        self._save(session_id, progress)
 
         # Optimistically mark the predicted next node as running
         next_node = _PREDICTED_NEXT.get(node_name)
@@ -180,54 +275,84 @@ class PipelineProgressStore:
             self.mark_node_running(session_id, next_node)
 
     def mark_node_skipped(self, session_id: str, node_name: str) -> None:
-        with self._lock:
-            progress = self._store.get(session_id)
-            if not progress:
-                return
-            for n in progress.nodes:
-                if n.name == node_name and n.status == "pending":
-                    n.status = "skipped"
+        progress = self._load(session_id)
+        if not progress:
+            return
+        for n in progress.nodes:
+            if n.name == node_name and n.status == "pending":
+                n.status = "skipped"
+        self._save(session_id, progress)
 
     def mark_pipeline_completed(self, session_id: str) -> None:
-        with self._lock:
-            progress = self._store.get(session_id)
-            if not progress:
-                return
-            progress.status = "completed"
-            progress.current_node = None
-            progress.completed_at = datetime.now().isoformat()
-            # Mark any still-pending nodes as skipped (conditional branches not taken)
-            for n in progress.nodes:
-                if n.status in ("pending", "running"):
-                    n.status = "skipped"
+        progress = self._load(session_id)
+        if not progress:
+            return
+        progress.status = "completed"
+        progress.current_node = None
+        progress.completed_at = datetime.now().isoformat()
+        for n in progress.nodes:
+            if n.status in ("pending", "running"):
+                n.status = "skipped"
+        self._save(session_id, progress)
+
+        # Also update the top-level pipeline:{session_id} key that the Go
+        # gateway reads for GET /session/{id}/pipeline/status.
+        self._update_go_status_key(session_id, "completed")
 
     def mark_pipeline_failed(self, session_id: str, error: str) -> None:
-        with self._lock:
-            progress = self._store.get(session_id)
-            if not progress:
-                return
-            progress.status = "failed"
-            progress.error = error
-            progress.completed_at = datetime.now().isoformat()
-            # Mark running node as failed
-            for n in progress.nodes:
-                if n.status == "running":
-                    n.status = "failed"
-                    n.detail = error[:120]
+        progress = self._load(session_id)
+        if not progress:
+            return
+        progress.status = "failed"
+        progress.error = error
+        progress.completed_at = datetime.now().isoformat()
+        for n in progress.nodes:
+            if n.status == "running":
+                n.status = "failed"
+                n.detail = error[:120]
+        self._save(session_id, progress)
 
-    # ── Read ────────────────────────────────────────────────────────────────
+        self._update_go_status_key(session_id, "failed", error=error)
+
+    def _update_go_status_key(self, session_id: str, status: str, error: str = "") -> None:
+        """
+        Write the top-level ``pipeline:{session_id}`` key that the Go gateway's
+        GetPipelineStatus reads. This bridges the Python progress store with
+        the Go polling endpoint.
+        """
+        if not self._redis_available:
+            return
+        try:
+            go_key = f"pipeline:{session_id}"
+            existing_raw = self._redis.get(go_key)
+            go_status = json.loads(existing_raw) if existing_raw else {}
+            go_status["status"] = status
+            go_status["session_id"] = session_id
+            if status in ("completed", "failed"):
+                go_status["completed_at_ms"] = int(time.time() * 1000)
+            if error:
+                go_status["error"] = error
+            self._redis.set(go_key, json.dumps(go_status), ex=self._TTL_SECONDS)
+        except Exception as exc:
+            logger.warning("pipeline_progress: failed to update Go status key: %s", exc)
+
+    # -- Read ----------------------------------------------------------------
 
     def get(self, session_id: str) -> Optional[PipelineProgress]:
-        with self._lock:
-            return self._store.get(session_id)
+        return self._load(session_id)
 
     def get_dict(self, session_id: str) -> Optional[dict]:
-        progress = self.get(session_id)
+        progress = self._load(session_id)
         return progress.to_dict() if progress else None
 
     def clear(self, session_id: str) -> None:
+        if self._redis_available:
+            try:
+                self._redis.delete(self._key(session_id))
+            except Exception:
+                pass
         with self._lock:
-            self._store.pop(session_id, None)
+            self._fallback.pop(session_id, None)
 
 
 # ---------------------------------------------------------------------------

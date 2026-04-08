@@ -43,6 +43,7 @@ from app.api.routes.session import router as session_router
 from app.api.routes.patient import router as patient_router
 from app.api.routes.assistant import router as assistant_router
 from app.api.routes.llm_config import router as llm_config_router
+from app.api.routes.internal_pipeline import router as internal_pipeline_router
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +225,8 @@ app.include_router(tts_router)
 app.include_router(patient_router)
 app.include_router(assistant_router)
 app.include_router(llm_config_router)
+# Internal route for Go pipeline proxy -- not exposed to external clients.
+app.include_router(internal_pipeline_router)
 
 
 @app.get("/")

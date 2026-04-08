@@ -142,7 +142,7 @@ class Session(Base):
     id = Column(String(50), primary_key=True, index=True)
 
     # Foreign keys
-    patient_id = Column(String(50), ForeignKey("patients.id"), nullable=False, index=True)
+    patient_id = Column(String(50), ForeignKey("patients.id"), nullable=True, index=True)
     doctor_id = Column(String(50), ForeignKey("users.id"), nullable=False, index=True)
 
     # Session metadata

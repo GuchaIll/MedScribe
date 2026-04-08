@@ -19,7 +19,6 @@ import re
 from typing import Any, Dict, List, Optional
 from ..config import AgentContext
 from ..state import GraphState
-from ...models.llm import LLMClient
 
 _LOW_CONF = 0.70  # Below this → amber highlight
 
@@ -54,7 +53,11 @@ def generate_note_node(state: GraphState, ctx: AgentContext) -> GraphState:
 
     # LLM generates natural-language text per section; HTML wrapping is done here
     try:
-        llm = LLMClient()
+        llm = ctx.llm if ctx and ctx.llm else None
+        if llm is None and ctx and ctx.llm_factory:
+            llm = ctx.llm_factory()
+        if llm is None:
+            raise RuntimeError("No LLM client available")
         llm_calls_used += 1
         history_context = _build_history_context(state)
         sections = _call_llm_for_sections(llm, record, history_context)
@@ -75,7 +78,7 @@ def generate_note_node(state: GraphState, ctx: AgentContext) -> GraphState:
 
 # ── LLM section generator ─────────────────────────────────────────────────────
 
-def _call_llm_for_sections(llm: LLMClient, record: Dict, history_context: str) -> Dict[str, str]:
+def _call_llm_for_sections(llm, record: Dict, history_context: str) -> Dict[str, str]:
     """Ask LLM to write a short prose paragraph for each H&P section."""
     record_json = json.dumps(
         {k: v for k, v in record.items() if not k.startswith("_")},
@@ -102,7 +105,7 @@ Structured Record:
 
 JSON output:"""
 
-    response = llm.generate_response(prompt).strip()
+    response = llm.generate_response(prompt, max_tokens=2000).strip()
     if response.startswith("```"):
         response = re.sub(r'^```(?:json)?\s*\n?', '', response)
         response = re.sub(r'\n?```\s*$', '', response)

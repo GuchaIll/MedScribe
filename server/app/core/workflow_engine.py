@@ -11,7 +11,6 @@ Orchestrates LangGraph workflow execution with:
 import asyncio
 from typing import Dict, Any, Optional, AsyncGenerator
 from datetime import datetime
-from pathlib import Path
 
 from app.agents.graph import build_graph
 from app.agents.config import create_default_context
@@ -50,10 +49,8 @@ class WorkflowEngine:
 
         # Build workflow graph with dependency-injected context
         ctx = create_default_context(db_session=db_session)
-        checkpoint_path = str(Path(__file__).parent.parent.parent / "storage" / "checkpoints.db") if enable_checkpointing else None
         self.graph = build_graph(
             ctx=ctx,
-            checkpoint_path=checkpoint_path,
             enable_interrupts=enable_interrupts,
         )
         self.checkpointer = enable_checkpointing
@@ -184,8 +181,11 @@ class WorkflowEngine:
         immediately updates the progress store; the status endpoint reads this
         while the pipeline is executing in the background thread.
         """
+        import time
+
         # Working state — updated by applying each node's state delta.
         final_state: Dict[str, Any] = dict(state)
+        _prev_ts = time.monotonic()
 
         try:
             for event in self.graph.stream(state, config=config, stream_mode="updates"):
@@ -193,6 +193,11 @@ class WorkflowEngine:
                     # LangGraph emits __end__ and other internal keys — skip them.
                     if node_name.startswith("__") or not isinstance(updates, dict):
                         continue
+
+                    now = time.monotonic()
+                    elapsed_ms = int((now - _prev_ts) * 1000)
+                    _prev_ts = now
+                    print(f"[Pipeline] node={node_name} elapsed={elapsed_ms}ms")
 
                     # Merge the node's state delta into our working state.
                     final_state.update(updates)

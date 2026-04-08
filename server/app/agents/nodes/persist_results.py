@@ -109,6 +109,12 @@ def _persist_medical_record(
     if ctx.record_repo is None:
         return None
 
+    # Skip DB persist when patient_id is missing — the FK constraint on
+    # medical_records requires a valid patients row.
+    if not patient_id:
+        logger.info("[PersistResults] No patient_id — skipping MedicalRecord insert")
+        return None
+
     record_id = str(uuid.uuid4())
 
     try:
@@ -283,6 +289,12 @@ def _write_audit_log(
 ) -> None:
     """Write HIPAA audit trail entry."""
     if ctx.db_session_factory is None:
+        return
+
+    # Skip when doctor_id is empty — the FK on audit_logs.user_id requires
+    # a valid users row.
+    if not doctor_id:
+        logger.info("[PersistResults] No doctor_id — skipping AuditLog insert")
         return
 
     try:

@@ -9,25 +9,22 @@ Nodes receive services through AgentContext (Anthropic agent pattern)
 rather than importing them directly.
 
 Pipeline topology (with DB integration):
-  greeting → load_patient_context → ingest → clean → normalize → segment →
-  extract → diagnostic_reasoning → evidence → fill_record → clinical_suggestions → validate →
+  greeting → load_patient_context → preprocess (ingest+normalize+segment) → clean →
+  extract (parallel query-value) → diagnostic_reasoning → evidence →
+  fill_record → clinical_suggestions → validate →
   [repair loop | conflict_resolution | human_review_gate] →
   generate_note → package_outputs → persist_results → END
 """
 
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.sqlite import SqliteSaver
-from pathlib import Path
 
 from .state import GraphState
 from .config import AgentContext, make_node, create_default_context
 
 # Node imports — each is a pure function (state[, ctx]) -> state
 from .nodes.load_patient_context import load_patient_context_node
-from .nodes.ingest import ingest_transcript_node
+from .nodes.preprocess import preprocess_node
 from .nodes.clean import clean_transcription_node
-from .nodes.normalize import normalize_transcript_node
-from .nodes.segment import segment_and_chunk_node
 from .nodes.extract import extract_candidates_node
 from .nodes.diagnostic_reasoning import diagnostic_reasoning_node
 from .nodes.evidence import retrieve_evidence_node
@@ -84,7 +81,6 @@ def _route_after_conflict(state: GraphState) -> str:
 
 def build_graph(
     ctx: AgentContext | None = None,
-    checkpoint_path: str | None = None,
     enable_interrupts: bool = True,
 ):
     """
@@ -93,8 +89,6 @@ def build_graph(
     Args:
         ctx:               AgentContext with injected services.
                            Falls back to ``create_default_context()`` if None.
-        checkpoint_path:   Path to SQLite checkpoint DB.
-                           Defaults to ``storage/checkpoints.db``.
         enable_interrupts: Pause before human_review_gate for approval.
 
     Returns:
@@ -109,15 +103,13 @@ def build_graph(
     nodes = {
         "greeting":               greeting_node,
         "load_patient_context":   load_patient_context_node,
-        "ingest":                 ingest_transcript_node,
+        "preprocess":             preprocess_node,
         "clean_transcription":    clean_transcription_node,
-        "normalize_transcript":   normalize_transcript_node,
-        "segment_and_chunk":      segment_and_chunk_node,
         "extract_candidates":     extract_candidates_node,
-        "diagnostic_reasoning":   diagnostic_reasoning_node,
+        "diagnostic_reasoning_node": diagnostic_reasoning_node,
         "retrieve_evidence":      retrieve_evidence_node,
         "fill_structured_record": fill_structured_record_node,
-        "clinical_suggestions":   clinical_suggestions_node,
+        "clinical_suggestions_node": clinical_suggestions_node,
         "validate_and_score":     validate_and_score_node,
         "repair":                 repair_node,
         "conflict_resolution":    conflict_resolution_node,
@@ -133,16 +125,14 @@ def build_graph(
     # ── Edges: linear pipeline with DB bookends ─────────────────────────────
     graph.set_entry_point("greeting")
     graph.add_edge("greeting", "load_patient_context")
-    graph.add_edge("load_patient_context", "ingest")
-    graph.add_edge("ingest", "clean_transcription")
-    graph.add_edge("clean_transcription", "normalize_transcript")
-    graph.add_edge("normalize_transcript", "segment_and_chunk")
-    graph.add_edge("segment_and_chunk", "extract_candidates")
-    graph.add_edge("extract_candidates", "diagnostic_reasoning")
-    graph.add_edge("diagnostic_reasoning", "retrieve_evidence")
+    graph.add_edge("load_patient_context", "preprocess")
+    graph.add_edge("preprocess", "clean_transcription")
+    graph.add_edge("clean_transcription", "extract_candidates")
+    graph.add_edge("extract_candidates", "diagnostic_reasoning_node")
+    graph.add_edge("diagnostic_reasoning_node", "retrieve_evidence")
     graph.add_edge("retrieve_evidence", "fill_structured_record")
-    graph.add_edge("fill_structured_record", "clinical_suggestions")
-    graph.add_edge("clinical_suggestions", "validate_and_score")
+    graph.add_edge("fill_structured_record", "clinical_suggestions_node")
+    graph.add_edge("clinical_suggestions_node", "validate_and_score")
 
     # ── Conditional edges: validate → repair loop / conflicts / review ──────
     graph.add_conditional_edges("validate_and_score", _route_after_validate)
@@ -154,21 +144,13 @@ def build_graph(
     graph.add_edge("package_outputs", "persist_results")
     graph.add_edge("persist_results", END)
 
-    # ── Compile with optional checkpointing + interrupts ────────────────────
+    # ── Compile ─────────────────────────────────────────────────────────────
+    # NOTE: Redis checkpointing is disabled until langgraph is upgraded to
+    # 0.3+ (currently 0.1.19 which is incompatible with
+    # langgraph-checkpoint 4.x put() signature).  The pipeline streams
+    # state via graph.stream() and accumulates final_state locally, so
+    # checkpointing is not required for correctness.
     compile_kwargs: dict = {}
-
-    if checkpoint_path is None:
-        storage_dir = Path(__file__).parent.parent.parent / "storage"
-        storage_dir.mkdir(parents=True, exist_ok=True)
-        checkpoint_path = str(storage_dir / "checkpoints.db")
-
-    try:
-        import sqlite3
-        conn = sqlite3.connect(checkpoint_path, check_same_thread=False)
-        checkpointer = SqliteSaver(conn)
-        compile_kwargs["checkpointer"] = checkpointer
-    except Exception as e:
-        print(f"[WARNING] Could not create checkpointer: {e}")
 
     if enable_interrupts:
         compile_kwargs["interrupt_before"] = ["human_review_gate"]
