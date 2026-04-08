@@ -54,6 +54,7 @@ class AgentContext:
     patient_service: Optional[PatientService] = None
     clinical_engine: Optional[ClinicalSuggestionEngine] = None
     llm_factory: Optional[Callable[[], LLMClient]] = None
+    llm: Optional[LLMClient] = None  # singleton shared across all nodes
 
     # ── New: DB-aware dependencies ──────────────────────────────────────────
     embedding_service: Optional[EmbeddingService] = None
@@ -144,6 +145,13 @@ def create_default_context(
         from app.models.llm import LLMClient
         return LLMClient()
 
+    # Create a singleton LLM client for reuse across all nodes
+    _llm_singleton = None
+    try:
+        _llm_singleton = _llm_factory()
+    except Exception:
+        pass
+
     # Wire up DB-backed services if a session is provided
     if db_session is not None:
         # Quick connectivity check — if DB is unreachable, skip all repos/services
@@ -205,6 +213,7 @@ def create_default_context(
         clinical_engine=clinical_engine,
         patient_service=patient_service,
         llm_factory=_llm_factory,
+        llm=_llm_singleton,
         embedding_service=embedding_service,
         patient_repo=patient_repo,
         record_repo=record_repo,
