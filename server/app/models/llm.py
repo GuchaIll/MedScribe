@@ -12,8 +12,9 @@ class LLMClient:
         self.model_name = packed.get("model_name")
         self.tokenizer = packed.get("tokenizer", None)
 
-    def generate_response(self, prompt: str) -> str:
+    def generate_response(self, prompt: str, max_tokens: int | None = None) -> str:
         if self.model_type == "local":
+            _max = max_tokens or 150
             start_time = time.time()
 
             tokenize_start = time.time()
@@ -21,7 +22,7 @@ class LLMClient:
             tokenize_time = time.time() - tokenize_start
 
             generate_start = time.time()
-            outputs = self.model.generate(**inputs, max_new_tokens=150)
+            outputs = self.model.generate(**inputs, max_new_tokens=_max)
             generate_time = time.time() - generate_start
 
             decode_start = time.time()
@@ -36,7 +37,7 @@ class LLMClient:
             print(f"  Generation: {generate_time:.3f}s")
             print(f"  Decoding: {decode_time:.3f}s")
             print(f"  Total: {total_time:.3f}s")
-            print(f"  Tokens/sec: {150 / generate_time:.2f}")
+            print(f"  Tokens/sec: {_max / generate_time:.2f}")
             print(f"LLM response: {response}")
             print("######################################################")
 
@@ -44,16 +45,19 @@ class LLMClient:
 
         if self.model_type == "api":
             if self.provider in ["groq", "openai", "openrouter"]:
-                chat_completion = self.model.chat.completions.create(
-                    messages=[{"role": "user", "content": prompt}],
-                    model=self.model_name,
-                )
+                kwargs: dict = {
+                    "messages": [{"role": "user", "content": prompt}],
+                    "model": self.model_name,
+                }
+                if max_tokens is not None:
+                    kwargs["max_tokens"] = max_tokens
+                chat_completion = self.model.chat.completions.create(**kwargs)
                 return chat_completion.choices[0].message.content
 
             if self.provider == "anthropic":
                 message = self.model.messages.create(
                     model=self.model_name,
-                    max_tokens=600,
+                    max_tokens=max_tokens or 600,
                     messages=[{"role": "user", "content": prompt}],
                 )
                 return message.content[0].text

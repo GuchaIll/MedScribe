@@ -17,6 +17,9 @@ alembic==1.13.1
 asyncpg>=0.29.0
 pgvector
 
+# ── Redis (shared progress store with Go gateway) ─────────────────────────
+redis==5.2.1
+
 # ── Auth & Security ────────────────────────────────────────────────────────
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
@@ -33,6 +36,7 @@ scipy==1.12.0
 
 # ── LangGraph & LangChain ──────────────────────────────────────────────────
 langgraph>=0.1.0
+langgraph-checkpoint-redis>=0.4.0
 langchain>=0.1.0
 
 # ── LLM API Clients ────────────────────────────────────────────────────────
