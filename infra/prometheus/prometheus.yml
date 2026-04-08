@@ -1,0 +1,25 @@
+# MedScribe — Prometheus Configuration
+# Scrapes the Go API gateway (/metrics) for HTTP latency, throughput, and
+# in-flight metrics.  Add additional scrape targets as services expose /metrics.
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: "go-gateway"
+    static_configs:
+      - targets: ["gateway:8080"]
+    metrics_path: /metrics
+
+  - job_name: "kafka"
+    static_configs:
+      - targets: ["kafka-exporter:9308"]
+    # Only present when kafka-exporter is running.
+    # Provides: kafka_consumergroup_lag, kafka_topic_partition_current_offset, etc.
+
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+    # Only present when redis-exporter is running.
+    # Provides: redis_commands_total, redis_keyspace_hits_total, etc.
