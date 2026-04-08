@@ -143,7 +143,7 @@ def get_llm_client():
             from groq import Groq
 
             client = Groq(api_key=keys["groq"])
-            model_name = os.environ.get("LLM_NAME", "llama-3.3-70b-versatile")
+            model_name = os.environ.get("LLM_NAME", "meta-llama/llama-4-scout-17b-16e-instruct")
         elif provider == "openai":
             from openai import OpenAI
 

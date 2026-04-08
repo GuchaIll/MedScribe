@@ -9,6 +9,9 @@ sqlalchemy==2.0.25
 psycopg2-binary==2.9.9
 alembic==1.13.1
 
+# Redis (shared progress store with Go gateway)
+redis==5.2.1
+
 # ML & NLP
 torch==2.2.0
 transformers==4.37.2
