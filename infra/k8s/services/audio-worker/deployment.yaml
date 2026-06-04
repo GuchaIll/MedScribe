@@ -1,29 +1,32 @@
-# Gateway: HTTP API only (--mode=gateway). No Kafka consumers run here — those
-# are separate Deployments (pipeline-worker, ocr-worker, audio-worker) off the
-# same image.
+# Audio worker: consumes audio.ingest and proxies to the speech worker (Modal
+# Whisper + pyannote). Same image as the gateway, run with --mode=audio-worker.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: medscribe-gateway
+  name: medscribe-audio-worker
   namespace: medscribe
   labels:
-    app.kubernetes.io/name: medscribe-gateway
-    app.kubernetes.io/component: gateway
+    app.kubernetes.io/name: medscribe-audio-worker
+    app.kubernetes.io/component: worker
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: medscribe-gateway
+      app.kubernetes.io/name: medscribe-audio-worker
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: medscribe-gateway
-        app.kubernetes.io/component: gateway
+        app.kubernetes.io/name: medscribe-audio-worker
+        app.kubernetes.io/component: worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
-        - name: gateway
+        - name: audio-worker
           image: ghcr.io/medscribe/api:latest
-          args: ["--mode=gateway"]
+          args: ["--mode=audio-worker"]
           ports:
             - name: http
               containerPort: 8080
@@ -34,20 +37,20 @@ spec:
                 name: medscribe-secrets
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: http
             initialDelaySeconds: 10
             periodSeconds: 15
           resources:
             requests:
-              cpu: "250m"
+              cpu: "100m"
               memory: "128Mi"
             limits:
-              cpu: "1"
+              cpu: "500m"
               memory: "512Mi"

@@ -1,0 +1,21 @@
+# KEDA ScaledObject — scales the audio worker on Kafka consumer lag. Requires
+# KEDA. consumerGroup MUST match the worker's effective group
+# (SPEECH_WORKER_CONSUMER_GROUP, default "medscribe-speech-proxy").
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: medscribe-audio-worker
+  namespace: medscribe
+spec:
+  scaleTargetRef:
+    name: medscribe-audio-worker
+  minReplicaCount: 1
+  maxReplicaCount: 8
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka:9092
+        consumerGroup: medscribe-speech-proxy
+        topic: audio.ingest
+        lagThreshold: "5"
+        offsetResetPolicy: earliest

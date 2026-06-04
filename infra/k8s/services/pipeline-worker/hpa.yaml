@@ -1,0 +1,24 @@
+# KEDA ScaledObject — scales the pipeline worker on Kafka consumer lag rather
+# than CPU (a blocked consumer waiting on a slow LLM run shows low CPU but high
+# lag). Requires KEDA installed in the cluster. Scales to zero when idle.
+#
+# consumerGroup MUST match the worker's effective group (KAFKA_CONSUMER_GROUP,
+# default "medscribe-pipeline-proxy").
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: medscribe-pipeline-worker
+  namespace: medscribe
+spec:
+  scaleTargetRef:
+    name: medscribe-pipeline-worker
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka:9092
+        consumerGroup: medscribe-pipeline-proxy
+        topic: pipeline.trigger
+        lagThreshold: "5"
+        offsetResetPolicy: earliest
