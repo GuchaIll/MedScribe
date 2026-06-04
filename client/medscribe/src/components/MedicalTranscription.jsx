@@ -3,6 +3,7 @@ import {
   startSession,
   endSession,
   sendTranscription,
+  uploadAudioSegment,
   runPipeline,
   generateRecord,
   getClinicalSuggestions,
@@ -11,7 +12,9 @@ import {
   speakText,
   getPipelineStatus,
   getSessionRecord,
+  getLiveTranscript,
 } from "../api/api";
+import { float32ToWavBlob } from "../lib/audio";
 
 import PatientInfoPanel from "./panels/PatientInfoPanel";
 
@@ -21,12 +24,13 @@ import Footer from "./layout/Footer";
 import TranscriptionFeed from "./transcription/TranscriptionFeed";
 import UploadPanel from "./upload/UploadPanel";
 import LLMProviderModal from "./modals/LLMProviderModal";
+import SpeakerRoleCheckModal from "./modals/SpeakerRoleCheckModal";
 
 import useTimer from "../hooks/useTimer";
 import useNotify from "../hooks/useNotify";
 import useVoiceCapture from "../hooks/useVoiceCapture";
 
-import { PHYSICIAN, PATIENT, AGENT, EMPTY_DOCUMENTS } from "../constants";
+import { PHYSICIAN, PATIENT, AGENT, UNKNOWN, EMPTY_DOCUMENTS } from "../constants";
 
 // Forgiving wake-word regex — Web Speech API often mis-transcribes "assistant"
 // as "persistence", "a]sistant", "assistent", etc.
@@ -43,6 +47,7 @@ export default function MedicalTranscription() {
   const [llmProviderSelected, setLLMProviderSelected] = useState(
     sessionStorage.getItem("selectedLLMProvider") !== null
   );
+  const [speakerRoleCheck, setSpeakerRoleCheck] = useState(null);
 
   /* ── Messages / transcript ── */
   const [msgs, setMsgs] = useState([]);
@@ -76,6 +81,8 @@ export default function MedicalTranscription() {
 
   /* ── Segments for pipeline ── */
   const segmentsRef = useRef([]);
+  const pendingSegmentIdsRef = useRef([]);
+  const appliedAuthoritativeSegmentsRef = useRef(new Set());
 
   /* ── Stable timer ref (avoids recreating addUtterance every tick) ── */
   const timerSecondsRef = useRef(0);
@@ -135,32 +142,89 @@ export default function MedicalTranscription() {
     return () => clearInterval(pollId);
   }, [sessionActive, sessionId]);
 
-  /* ── Start Session ── */
-  const handleStartSession = useCallback(async () => {
-    try {
-      const res = await startSession();
-      setSessionId(res.session_id);
-      setSessionActive(true);
-      setMsgs([]);
-      setVis(new Set());
-      nextIdRef.current = 1;
-      segmentsRef.current = [];
-      setPipelineResult(null);
-      setDocuments(EMPTY_DOCUMENTS);
-      setRecording(true);
-      setTranscribing(true);
-      timer.reset();
-      timer.start();
+  useEffect(() => {
+    if (!sessionActive || !sessionId) return;
+    const pollTranscript = async () => {
+      try {
+        const data = await getLiveTranscript(sessionId);
+        const authoritativeSegments = data.authoritative_segments || [];
+        const bySegmentId = new Map(
+          authoritativeSegments.map((seg) => [seg.segment_id, seg])
+        );
+        if (bySegmentId.size === 0) return;
 
-      // Add agent greeting message
-      const greetingId = nextIdRef.current++;
-      const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      const greetingMsg = {
-        id: greetingId,
-        speaker: AGENT,
-        time: timeStr,
-        cardType: "greeting",
-        text: `Welcome to MedScribe — your clinical session assistant.
+        setMsgs((prev) =>
+          {
+            const nextMsgs = [...prev];
+            const consumed = new Set(appliedAuthoritativeSegmentsRef.current);
+
+            const applyAuthoritative = (msg, authoritative) => {
+              let speakerObj = msg.speaker;
+              const role = (authoritative.speaker_role || "").toLowerCase();
+              if (role === "patient") speakerObj = PATIENT;
+              else if (role === "clinician" || role === "doctor" || role === "provider") speakerObj = PHYSICIAN;
+
+              consumed.add(authoritative.segment_id);
+              return {
+                ...msg,
+                segmentId: msg.segmentId || authoritative.segment_id,
+                speaker: speakerObj,
+                text: authoritative.text || msg.text,
+                authoritative: true,
+                roleConfidence: authoritative.role_confidence,
+              };
+            };
+
+            for (let i = 0; i < nextMsgs.length; i += 1) {
+              const msg = nextMsgs[i];
+              if (!msg.segmentId) continue;
+              const authoritative = bySegmentId.get(msg.segmentId);
+              if (!authoritative) continue;
+              nextMsgs[i] = applyAuthoritative(msg, authoritative);
+            }
+
+            const remainingAuthoritative = authoritativeSegments.filter(
+              (seg) => seg.segment_id && !consumed.has(seg.segment_id)
+            );
+            if (remainingAuthoritative.length > 0) {
+              let segIdx = 0;
+              for (let i = 0; i < nextMsgs.length && segIdx < remainingAuthoritative.length; i += 1) {
+                const msg = nextMsgs[i];
+                if (msg.authoritative) continue;
+                if (msg.speaker?.role !== "Unknown") continue;
+                nextMsgs[i] = applyAuthoritative(msg, remainingAuthoritative[segIdx]);
+                segIdx += 1;
+              }
+            }
+
+            appliedAuthoritativeSegmentsRef.current = consumed;
+            return nextMsgs;
+          }
+        );
+      } catch {
+        /* ignore transient polling errors */
+      }
+    };
+    const pollId = setInterval(pollTranscript, 1000);
+    pollTranscript();
+    return () => clearInterval(pollId);
+  }, [sessionActive, sessionId]);
+
+  /* ── Start Session ── */
+  const finalizeSessionStart = useCallback((newSessionId) => {
+    setRecording(true);
+    setTranscribing(true);
+    timer.reset();
+    timer.start();
+
+    const greetingId = nextIdRef.current++;
+    const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const greetingMsg = {
+      id: greetingId,
+      speaker: AGENT,
+      time: timeStr,
+      cardType: "greeting",
+      text: `Welcome to MedScribe — your clinical session assistant.
 
 Before we begin, I'd like to explain how this session works and how your information is handled.
 
@@ -185,15 +249,38 @@ You can also say "Assistant, [your question]" at any point to ask about the pati
 By continuing, you acknowledge that this session may be recorded and used for clinical documentation purposes. If you have any questions about privacy or how your information is used, feel free to ask.
 
 Whenever you're ready, we can begin.`,
-      };
-      setMsgs([greetingMsg]);
-      setTimeout(() => setVis((prev) => new Set([...prev, greetingId])), 100);
+    };
+    setMsgs([greetingMsg]);
+    setTimeout(() => setVis((prev) => new Set([...prev, greetingId])), 100);
 
-      notify(`Session started: ${res.session_id.slice(0, 8)}…`, "success");
+    notify(`Session started: ${newSessionId.slice(0, 8)}…`, "success");
+  }, [notify, timer]);
+
+  const handleStartSession = useCallback(async () => {
+    try {
+      const res = await startSession();
+      setSessionId(res.session_id);
+      setSessionActive(true);
+      setMsgs([]);
+      setVis(new Set());
+      nextIdRef.current = 1;
+      segmentsRef.current = [];
+      setPipelineResult(null);
+      setDocuments(EMPTY_DOCUMENTS);
+      setRecording(false);
+      setTranscribing(false);
+      setSpeakerRoleCheck(res.speaker_role_check || null);
+
+      const requiresRoleCheck =
+        res.speaker_role_check?.required &&
+        res.speaker_role_check?.status !== "ready_for_matching";
+      if (!requiresRoleCheck) {
+        finalizeSessionStart(res.session_id);
+      }
     } catch (err) {
       notify(`Failed to start session: ${err.message}`, "error");
     }
-  }, [notify, timer]);
+  }, [finalizeSessionStart, notify]);
 
   /* ── Send utterance to backend ── */
   const addUtterance = useCallback(
@@ -202,10 +289,16 @@ Whenever you're ready, we can begin.`,
 
       const now = new Date();
       const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      const speakerObj = speaker.toLowerCase().includes("patient") ? PATIENT : PHYSICIAN;
+      const normalizedSpeaker = speaker.toLowerCase();
+      const speakerObj = normalizedSpeaker.includes("patient")
+        ? PATIENT
+        : normalizedSpeaker.includes("physician") || normalizedSpeaker.includes("clinician")
+          ? PHYSICIAN
+          : UNKNOWN;
+      const segmentId = pendingSegmentIdsRef.current.shift() || null;
 
       const id = nextIdRef.current++;
-      const localMsg = { id, speaker: speakerObj, time: timeStr, text, pipeline: [] };
+      const localMsg = { id, speaker: speakerObj, time: timeStr, text, pipeline: [], segmentId };
       setMsgs((prev) => [...prev, localMsg]);
       setTimeout(() => setVis((prev) => new Set([...prev, id])), 100);
 
@@ -213,7 +306,7 @@ Whenever you're ready, we can begin.`,
       segmentsRef.current.push({
         start: Math.max(0, elapsed - 5),
         end: elapsed,
-        speaker: speakerObj.role,
+        speaker: speakerObj.role === "Unknown" ? "Unknown" : speakerObj.role,
         raw_text: text,
       });
 
@@ -224,13 +317,19 @@ Whenever you're ready, we can begin.`,
 
       try {
         const res = await sendTranscription(sessionId, text, speakerObj.role);
+        const backendSpeaker = (res.speaker || "").toLowerCase();
+        const backendSpeakerObj = backendSpeaker.includes("patient")
+          ? PATIENT
+          : backendSpeaker.includes("physician") || backendSpeaker.includes("clinician")
+            ? PHYSICIAN
+            : speakerObj;
         const pipelineFeedback = [
           { label: `Speaker: ${res.speaker}`, state: "done" },
           { label: `Source: ${res.source}`, state: "done" },
         ];
         if (res.agent_message) pipelineFeedback.push({ label: res.agent_message, state: "done" });
         setMsgs((prev) =>
-          prev.map((m) => (m.id === id ? { ...m, pipeline: pipelineFeedback } : m))
+          prev.map((m) => (m.id === id ? { ...m, speaker: backendSpeakerObj, pipeline: pipelineFeedback } : m))
         );
       } catch (err) {
         console.error("Transcription send failed:", err);
@@ -786,6 +885,35 @@ This may take a moment…`,
     enabled: recording && sessionActive,
     muted,
     onUtterance: useCallback((text) => addUtterance(text), [addUtterance]),
+    onAudioSegment: useCallback(
+      async (audio) => {
+        if (!sessionId || !audio?.length) return;
+        const sampleRateHz = 16000;
+        const now = Date.now();
+        const durationMs = Math.max(1, Math.round((audio.length / sampleRateHz) * 1000));
+        const segmentId =
+          typeof crypto !== "undefined" && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `seg-${now}-${Math.random().toString(36).slice(2, 10)}`;
+
+        try {
+          pendingSegmentIdsRef.current.push(segmentId);
+          await uploadAudioSegment(sessionId, {
+            segment_id: segmentId,
+            started_at_ms: now - durationMs,
+            ended_at_ms: now,
+            sample_rate_hz: sampleRateHz,
+            mime_type: "audio/wav",
+            optimistic_speaker: "Unknown",
+            file: float32ToWavBlob(audio, sampleRateHz),
+            file_name: `${segmentId}.wav`,
+          });
+        } catch (err) {
+          console.error("Audio segment upload failed:", err);
+        }
+      },
+      [sessionId]
+    ),
     onError: useCallback((msg) => notify(msg, "error"), [notify]),
     silenceMs: 2500,
   });
@@ -799,6 +927,17 @@ This may take a moment…`,
 
   return (
     <>
+      {sessionActive && speakerRoleCheck?.required && speakerRoleCheck?.status !== "ready_for_matching" && (
+        <SpeakerRoleCheckModal
+          sessionId={sessionId}
+          speakerRoleCheck={speakerRoleCheck}
+          onComplete={(nextState) => {
+            setSpeakerRoleCheck(nextState);
+            finalizeSessionStart(nextState?.session_id || sessionId);
+          }}
+          onError={(msg) => notify(msg, "error")}
+        />
+      )}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&family=Lora:wght@400;500&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}

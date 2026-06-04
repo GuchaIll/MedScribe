@@ -21,7 +21,7 @@ async function apiFetch(path, options = {}) {
 
 // ── Session ─────────────────────────────────────────────────────────────────
 
-/** Start a new transcription session → { session_id, message } */
+/** Start a new transcription session → { session_id, status?, speaker_role_check? } */
 export async function startSession() {
   return apiFetch('/session/start', { method: 'POST' });
 }
@@ -29,6 +29,26 @@ export async function startSession() {
 /** End an active session → { message } */
 export async function endSession(sessionId) {
   return apiFetch(`/session/${sessionId}/end`, { method: 'POST' });
+}
+
+/**
+ * Upload a short onboarding voice sample for role matching.
+ * role: "Clinician" | "Patient"
+ */
+export async function uploadSpeakerRoleSample(sessionId, role, file, fileName = "sample.webm") {
+  const form = new FormData();
+  form.set("role", role);
+  form.set("file", file, fileName);
+
+  const res = await fetch(`${BASE}/session/${sessionId}/speaker-role-check`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Speaker role sample upload failed (${res.status}): ${body}`);
+  }
+  return res.json();
 }
 
 /**
@@ -40,6 +60,33 @@ export async function sendTranscription(sessionId, text, speaker = 'Unknown') {
     method: 'POST',
     body: JSON.stringify({ text, speaker }),
   });
+}
+
+/**
+ * Upload a voiced audio segment for authoritative server-side speech processing.
+ * input: { segment_id, started_at_ms, ended_at_ms, sample_rate_hz?, mime_type?,
+ *          optimistic_text?, optimistic_speaker?, file, file_name? }
+ */
+export async function uploadAudioSegment(sessionId, input) {
+  const form = new FormData();
+  form.set("segment_id", input.segment_id);
+  form.set("started_at_ms", String(input.started_at_ms));
+  form.set("ended_at_ms", String(input.ended_at_ms));
+  if (input.sample_rate_hz) form.set("sample_rate_hz", String(input.sample_rate_hz));
+  if (input.mime_type) form.set("mime_type", input.mime_type);
+  if (input.optimistic_text) form.set("optimistic_text", input.optimistic_text);
+  if (input.optimistic_speaker) form.set("optimistic_speaker", input.optimistic_speaker);
+  form.set("file", input.file, input.file_name || `${input.segment_id}.wav`);
+
+  const res = await fetch(`${BASE}/session/${sessionId}/audio-segment`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Audio upload failed (${res.status}): ${body}`);
+  }
+  return res.json();
 }
 
 // ── LLM Configuration ───────────────────────────────────────────────────────
@@ -276,6 +323,14 @@ export async function uploadDocuments(sessionId, uploadItems) {
  */
 export async function getSessionRecord(sessionId) {
   return apiFetch(`/session/${sessionId}/record`);
+}
+
+/**
+ * Get the current live transcript reconciliation state from the active session.
+ * Returns queued jobs and authoritative audio-derived segments.
+ */
+export async function getLiveTranscript(sessionId) {
+  return apiFetch(`/session/${sessionId}/live-transcript`);
 }
 
 /**
