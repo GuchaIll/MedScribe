@@ -1,0 +1,62 @@
+# MedScribe — single-host demo overlay
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
+#
+# Purpose:
+# - turns the development stack into a demo-safe single-VM deployment
+# - serves the existing CRA frontend as static assets behind nginx
+# - keeps the Go gateway available on localhost for architecture benchmarks
+# - keeps the Python API on a single worker because live session state is
+#   process-local today
+
+services:
+  db:
+    ports: !override []
+    restart: unless-stopped
+
+  redis:
+    ports: !override []
+    restart: unless-stopped
+
+  kafka:
+    ports: !override []
+    environment:
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes: !override
+      - kafka_data:/var/lib/kafka/data
+    restart: unless-stopped
+
+  gateway:
+    ports: !override
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  api:
+    command:
+      - sh
+      - -c
+      - alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 3001 --workers 1
+    ports: !override
+      - "127.0.0.1:3001:3001"
+    volumes: !override []
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  client:
+    build:
+      context: ./client/medscribe
+      dockerfile: Dockerfile.prod
+    ports: !override
+      - "80:80"
+    volumes: !override []
+    environment: {}
+    restart: unless-stopped
+
+volumes:
+  kafka_data:

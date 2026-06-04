@@ -24,7 +24,7 @@ Clinical documentation consumes an estimated 30–50% of physician time per shif
 
 ## The Solution
 
-MedScribe implements a distributed microservices architecture where a Go API gateway handles authentication, session management, and request routing at 500 QPS (p50 < 1ms), publishes pipeline triggers to Kafka, and delegates clinical reasoning to a 15-node LangGraph pipeline running on a Python backend. The system:
+MedScribe implements a distributed microservices architecture where a Go API gateway handles authentication, session management, and request routing, publishes pipeline triggers to Kafka, and delegates clinical reasoning to a 16-node LangGraph pipeline running on a Python backend. The current benchmark harness and evidence pack for ingestion throughput and hot-path latency live in `docs/benchmarks/gateway-ingestion-qps/`. The system:
 
 - Ingests live voice transcriptions and uploaded historical documents through the Go gateway
 - Publishes pipeline triggers asynchronously via Kafka with micro-batching for throughput
@@ -53,14 +53,15 @@ flowchart TD
     end
 
     GW3 -->|pipeline.trigger| K{{Kafka 4.2 KRaft}}
-    K --> PY
+    K -->|pipeline.trigger| W[pipeline-worker\nGo --mode=pipeline-worker\nKafka consumer proxy]
+    W -->|HTTP /internal/pipeline| PY
 
     subgraph PY [Python Backend — port 3001]
         direction TB
-        subgraph LG [LangGraph Clinical Pipeline — 15 nodes]
+        subgraph LG [LangGraph Clinical Pipeline — 16 nodes]
             direction TB
-            G1[Ingestion\nload_patient_context → ingest → clean → normalize → segment] -->
-            G2[Extraction\nextract → diagnostic_reasoning → retrieve_evidence → fill_record] -->
+            G1[Ingestion\ngreeting → load_patient_context → preprocess → clean_transcription] -->
+            G2[Extraction\nextract_candidates → diagnostic_reasoning → retrieve_evidence → fill_structured_record] -->
             G3[clinical_suggestions → validate_and_score]
             G3 -->|schema errors, attempts < 3| G3R[repair]
             G3R -->|retry| G3
@@ -87,13 +88,13 @@ flowchart TD
 ## Key Features
 
 **VAD-Gated Live Transcription**
-Browser-side Silero VAD (ONNX via `@ricky0123/vad-react`, ~50–100ms onset latency) gates the Web Speech API, eliminating false activations and capturing complete utterances. An 800ms pre-speech audio buffer prevents truncation of utterance-initial words.
+Browser-side Silero VAD (ONNX via `@ricky0123/vad-react`, ~50–100ms onset latency) gates the Web Speech API, eliminating false activations and capturing complete utterances. An 800ms pre-speech audio buffer prevents truncation of utterance-initial words. Today, this browser speech-recognition path is the live transcription source. A server-side Whisper + pyannote speech service (transcription quality + clinician/patient role detection) is **implemented as a Modal GPU worker** (`infra/modal/medscribe_speech_worker.py`, reached via the Go `audioproxy`), but is not yet wired as the default live path — `SPEECH_PROVIDER` defaults to `noop`, so browser recognition remains the live source until the speech provider is switched to `remote_http`.
 
-**15-Node LangGraph Clinical Pipeline**
+**16-Node LangGraph Clinical Pipeline**
 A stateful directed graph executes the full clinical reasoning workflow behind the Go gateway. The gateway publishes a Kafka trigger; the Python backend consumes it and runs the pipeline. Conditional edges implement a repair loop (validate -> repair -> validate, max 3 iterations) and route to conflict resolution or a physician interrupt gate when validation fails. Pipeline status is streamed to Redis for real-time frontend polling.
 
 **Multi-Stage OCR Document Intelligence**
-Uploaded PDFs and images traverse a 9-stage pipeline: page splitting, deskew/denoise, layout detection, handwriting classification, RapidOCR extraction with engine fallback, medical normalization, document classification, structured field extraction with per-field confidence scores, and conflict detection against existing patient history.
+Uploaded PDFs and images traverse a 9-stage pipeline: page splitting, deskew/denoise, layout detection, handwriting classification, PaddleOCR extraction (PaddleOCR det/rec models served via the RapidOCR ONNX runtime) with engine fallback, medical normalization, document classification, structured field extraction with per-field confidence scores, and conflict detection against existing patient history.
 
 **Semantic Evidence Grounding and Auditability**
 Every extracted clinical fact is anchored to its originating source chunk via sentence-transformer embeddings and pgvector ANN search. Per-field confidence scores come from deterministic contract validation — each field has a `min_confidence` threshold defined in `validation_contracts.py`. No "magic" outputs: confidence score and source reference are logged to the per-node audit trace for every field.
@@ -102,7 +103,7 @@ Every extracted clinical fact is anchored to its originating source chunk via se
 Per-session allergy cross-checking and drug-drug interaction detection run as deterministic rule-based lookups over the patient's stored allergy list and medication history. LLM reasoning is used only for disambiguation. The validation node also performs cross-visit contradiction detection — comparing the current session's record against prior finalized records in PostgreSQL.
 
 **Real-Time Pipeline Progress**
-The `WorkflowEngine` streams node-level events to Redis as each of the 15 nodes completes. The Go gateway exposes `GET /api/session/{id}/pipeline/status` which reads from Redis to drive a real-time progress sidebar with per-node status, duration, and detail (e.g. "3 clinical facts extracted", "validation passed").
+The `WorkflowEngine` streams node-level events to Redis as each of the 16 nodes completes. The Go gateway exposes `GET /api/session/{id}/pipeline/status` which reads from Redis to drive a real-time progress sidebar with per-node status, duration, and detail (e.g. "3 clinical facts extracted", "validation passed").
 
 **Multi-Format Record Generation**
 SOAP notes, discharge summaries, and referral letters are generated via Jinja2 templates rendered to HTML or PDF via WeasyPrint. Structured patient profiles persist across sessions in PostgreSQL, queryable by patient ID, MRN, or semantic similarity.
@@ -114,7 +115,7 @@ SOAP notes, discharge summaries, and referral letters are generated via Jinja2 t
 | Category | Technologies |
 |---|---|
 | Frontend | React 18, TypeScript, Create React App, Tailwind CSS |
-| Voice | Silero VAD (ONNX via `@ricky0123/vad-react`), Web Speech API |
+| Voice | Silero VAD (ONNX via `@ricky0123/vad-react`), Web Speech API, browser SpeechSynthesis |
 | API Gateway | Go 1.26, chi v5, pgx/v5, golang-jwt/v5, Prometheus client |
 | Event Bus | Apache Kafka 4.2 (KRaft mode), confluent-kafka-go/v2 |
 | Cache / Status Store | Redis Stack, go-redis/v9, sync.Map TTL session cache |
@@ -123,7 +124,7 @@ SOAP notes, discharge summaries, and referral letters are generated via Jinja2 t
 | Python Backend | FastAPI, Uvicorn, Python 3.11+ |
 | Database | PostgreSQL 15 + pgvector, pgx/v5 (Go), SQLAlchemy 2.0 (Python), Alembic |
 | Embeddings | sentence-transformers (all-MiniLM-L6-v2) |
-| OCR | RapidOCR, pdf2image, OpenCV |
+| OCR | PaddleOCR models (via RapidOCR ONNX runtime), pdf2image, OpenCV |
 | Document Generation | Jinja2, WeasyPrint |
 | Auth | golang-jwt/v5 (Go gateway), python-jose (Python) |
 | Observability | Prometheus, k6 load testing |
@@ -194,7 +195,7 @@ Optional:
 # ElevenLabs TTS — browser SpeechSynthesis API is used as fallback if omitted
 ELEVEN_LABS_API_KEY=sk_...
 
-# HuggingFace — only needed for local embedding or diarisation models
+# HuggingFace — only needed for local embedding or planned diarisation models
 HUGGINGFACE_API_KEY=hf_...
 ```
 
@@ -202,19 +203,25 @@ See [.env.example](.env.example) for the root Docker Compose template and [serve
 
 ---
 
+## Deployment Guide
+
+For a cost-efficient single-host demo deployment and benchmark checklist, see [docs/demo_deployment.md](docs/demo_deployment.md).
+
+---
+
 ## Key Engineering Decisions
 
 **Strangler-fig migration to Go gateway**
-The monolithic Python server is being decomposed via a strangler-fig pattern. A Go API gateway (`services/api/`) now owns authentication, session management, and request routing. It publishes pipeline triggers to Kafka asynchronously (`acks=1`, micro-batched) and proxies remaining endpoints to the Python backend. This separation achieved 500 QPS ingestion throughput at p50 < 1ms latency.
+The monolithic Python server is being decomposed via a strangler-fig pattern. A Go API gateway (`services/api/`) now owns authentication, session management, and request routing. It publishes pipeline triggers to Kafka asynchronously (`acks=1`, micro-batched), and Go Kafka **consumer proxies** pull from `pipeline.trigger` / `ocr.jobs` / `audio.ingest` and forward to the Python backend (and the Modal speech worker). The gateway and these consumers are built as **one binary run in modes** (`--mode=gateway|pipeline-worker|ocr-worker|audio-worker|all`): in production they deploy as separate Kubernetes Deployments off the same image (`infra/k8s/`); `docker compose` runs `--mode=all` as a single process. Reproducible benchmark instructions and raw output locations for gateway ingestion throughput and trigger latency live in `docs/benchmarks/gateway-ingestion-qps/`.
 
 **Kafka async pipeline triggers over synchronous HTTP**
 Pipeline execution is decoupled from the HTTP request cycle via Kafka. The gateway produces to `pipeline.trigger` with `acks=1` and async delivery (fire-and-forget with background event draining). Micro-batching (`linger.ms=10`, `batch.size=64KB`) amortises broker round-trips. Pipeline status is seeded in Redis asynchronously so the gateway returns immediately.
 
 **In-process session cache over per-request DB lookups**
-A `sync.Map`-based TTL cache in the gateway eliminates PostgreSQL round-trips for session validation on the hot path. Cache entries expire after 1 hour with a background reaper goroutine. This reduced p50 trigger latency from ~15ms to < 1ms.
+A `sync.Map`-based TTL cache in the gateway eliminates PostgreSQL round-trips for session validation on the hot path. Cache entries expire after 1 hour with a background reaper goroutine. The benchmark harness for validating hot-path trigger latency lives in `docs/benchmarks/gateway-ingestion-qps/`.
 
 **LangGraph for clinical orchestration**
-LangGraph provides native state serialisation, conditional edge routing, and interrupt/resume semantics for the 15-node clinical pipeline. The interrupt infrastructure is built but currently disabled (`enable_interrupts=False`). Pipeline status updates stream to Redis for real-time frontend polling.
+LangGraph provides native state serialisation, conditional edge routing, and interrupt/resume semantics for the 16-node clinical pipeline. The interrupt infrastructure is built but currently disabled (`enable_interrupts=False`). Pipeline status updates stream to Redis for real-time frontend polling.
 
 **pgvector over an external vector store**
 Storing embeddings in PostgreSQL via pgvector eliminates an external dependency and keeps all patient data co-located under a single governance boundary -- important for HIPAA-friendly architecture.
@@ -239,7 +246,7 @@ All endpoints are served by the Go gateway at port 8080. Auth and session routes
 | POST | `/api/session/{id}/end` | Go | End a session |
 | POST | `/api/session/{id}/transcribe` | Go | Add a transcript segment |
 | POST | `/api/session/{id}/upload` | Go -> Python | Upload a document for OCR |
-| POST | `/api/session/{id}/pipeline` | Go -> Kafka -> Python | Trigger the 15-node LangGraph pipeline |
+| POST | `/api/session/{id}/pipeline` | Go -> Kafka -> Python | Trigger the 16-node LangGraph pipeline |
 | GET | `/api/session/{id}/pipeline/status` | Go (Redis) | Poll real-time node-level pipeline progress |
 | GET | `/api/session/{id}/record` | Go -> Python | Get the session's structured record |
 | GET | `/api/session/{id}/documents` | Go -> Python | List OCR-processed documents |
@@ -259,10 +266,10 @@ All endpoints are served by the Go gateway at port 8080. Auth and session routes
 - gRPC service mesh replacing HTTP proxying between Go gateway and Python backend
 - Enable interrupt/resume for the human review gate (infrastructure built, `enable_interrupts=False`)
 - SSE streaming via LangGraph `astream_events` for real-time pipeline progress
-- Server-side Whisper + pyannote-audio for transcription and diarisation
+- Wire the server-side Whisper + pyannote service (already built as a Modal GPU worker, `infra/modal/`) in as the default live path — switch `SPEECH_PROVIDER` to `remote_http` — while keeping browser-side Silero VAD and speech synthesis: [docs/whisper_pyannote_role_detection_plan.md](docs/whisper_pyannote_role_detection_plan.md)
 
 **Roadmap**
-- Kubernetes deployment with horizontal pod autoscaling
+- Kubernetes deployment with horizontal pod autoscaling ([infra/k8s/](infra/k8s/) currently holds a scaffolded directory tree only — the manifests are not yet written; deployment today is via Docker Compose, and speech inference runs on Modal)
 - OpenTelemetry distributed tracing across Go, Kafka, and Python services
 - FHIR R4 export for direct EHR integration (Epic, Cerner)
 - Row-level security in PostgreSQL for multi-tenant clinic deployments
@@ -285,4 +292,3 @@ Full C4 component diagram, node reference table, and GraphState schema: [docs/ar
 | React Client | http://localhost:3000 | Proxies `/api` to gateway |
 | Prometheus | http://localhost:9090 | Metrics (monitoring overlay) |
 | Grafana | http://localhost:3100 | Dashboards, default admin/admin |
-

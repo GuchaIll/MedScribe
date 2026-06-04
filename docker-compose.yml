@@ -7,7 +7,8 @@
 #   kafka-init— One-shot topic bootstrapper
 #   gateway   — Go API gateway (chi, pgx, confluent-kafka, go-redis)
 #   api       — Python FastAPI backend (LangGraph pipeline, uvicorn --reload)
-#   client    — React dev server (CRA, proxies /api to gateway)
+#   client    — React dev server (CRA, port 3000, proxies /api to gateway)
+#   client-v2 — Vite dev server (Lovable rebuild, port 3100, proxies /api to api)
 #
 # Prerequisites:
 #   1. Copy .env.example to .env in the project root and fill in your keys.
@@ -63,15 +64,18 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      # Apache Kafka 4.2 runs as a non-root user; tmpfs mounts on Docker Desktop
+      # for macOS sometimes refuse writes by that user, so we use a named volume.
+      # Dev data is disposable — wipe with `docker compose down -v`.
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       CLUSTER_ID: MedScribeDevCluster0001
     ports:
       - "9092:9092"
-    tmpfs:
-      - /tmp/kraft-combined-logs
+    volumes:
+      - kafka_data:/var/lib/kafka/data
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
       interval: 10s
@@ -116,6 +120,14 @@ services:
 
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
           --create --if-not-exists \
+          --topic ocr.jobs \
+          --partitions 3 \
+          --replication-factor 1 \
+          --config retention.ms=86400000 \
+          --config cleanup.policy=delete
+
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --create --if-not-exists \
           --topic pipeline.results \
           --partitions 3 \
           --replication-factor 1 \
@@ -139,6 +151,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       KAFKA_BROKERS: kafka:9092
       PYTHON_BACKEND_URL: http://api:3001
+      SPEECH_WORKER_URL: http://speech-worker:3002
+      ALLOW_ANONYMOUS_DEMO_ACCESS: "true"
       LOG_LEVEL: debug
       GOMAXPROCS: "4"
     ports:
@@ -149,6 +163,27 @@ services:
       redis:
         condition: service_healthy
       kafka:
+        condition: service_healthy
+
+  speech-worker:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    volumes:
+      - ./server:/app
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      SPEECH_PROVIDER: ${SPEECH_PROVIDER:-noop}
+      SPEECH_REMOTE_URL: ${SPEECH_REMOTE_URL:-}
+      SPEECH_REMOTE_API_KEY: ${SPEECH_REMOTE_API_KEY:-}
+      SPEECH_REMOTE_TIMEOUT_SECONDS: ${SPEECH_REMOTE_TIMEOUT_SECONDS:-90}
+    command: ["uvicorn", "speech_worker:app", "--reload", "--host", "0.0.0.0", "--port", "3002"]
+    ports:
+      - "3002:3002"
+    depends_on:
+      redis:
         condition: service_healthy
 
   api:
@@ -165,8 +200,9 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/medscribe
       REDIS_URL: redis://redis:6379/0
       KAFKA_BROKERS: kafka:9092
-      LLM_MODEL: api
-      LLM_NAME: meta-llama/llama-4-scout-17b-16e-instruct
+      LLM_MODEL: ${LLM_MODEL:-api}
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_NAME: ${LLM_NAME:-}
     ports:
       - "3001:3001"
     depends_on:
@@ -193,6 +229,30 @@ services:
     depends_on:
       - gateway
 
+  # Lovable-rebuilt UI (Vite). Coexists with `client` (CRA) during the
+  # migration described in docs/v2_integration_plan.md. Proxies /api at
+  # the Go gateway so session start/transcribe/upload all follow the
+  # production-ish ingress path.
+  client-v2:
+    build:
+      context: ./client/v2
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./client/v2/src:/app/src
+      - ./client/v2/public:/app/public
+      - ./client/v2/index.html:/app/index.html
+      - ./client/v2/vite.config.ts:/app/vite.config.ts
+    env_file:
+      # Supabase keys for the v2 auth flow live in client/v2/.env (gitignored)
+      - ./client/v2/.env
+    environment:
+      VITE_API_TARGET: http://gateway:8080
+    ports:
+      - "3100:8080"
+    depends_on:
+      - gateway
+
 volumes:
   db_data:
   redis_data:
+  kafka_data:
