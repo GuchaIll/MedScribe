@@ -30,17 +30,22 @@ logger = logging.getLogger(__name__)
 NodeStatus = Literal["pending", "running", "completed", "failed", "skipped"]
 
 # (name, human-readable label, phase, short description shown to clinician)
+#
+# CANONICAL 16-node list — must mirror the nodes registered in
+# server/app/agents/graph.py::build_graph (names are matched against the
+# graph's streamed node events in workflow_engine.py, so they MUST be
+# identical). The frontend catalogue (client/v2/src/lib/pipelineNodes.ts)
+# mirrors this list in turn.
 PIPELINE_NODE_DEFS: List[tuple] = [
     ("greeting",               "Initialising session",             "ingestion",   "Loading session context and greeting"),
     ("load_patient_context",   "Loading patient history",          "ingestion",   "Retrieving prior visits, medications, allergies from database"),
-    ("ingest",                 "Ingesting transcript",             "ingestion",   "Loading raw transcript segments into pipeline state"),
+    ("preprocess",             "Preprocessing transcript",         "ingestion",   "Ingesting, normalising speaker labels, and chunking into clinical segments"),
     ("clean_transcription",    "Cleaning transcription",           "ingestion",   "Removing disfluencies, hesitations, and noise"),
-    ("normalize_transcript",   "Normalising speaker labels",       "ingestion",   "Standardising speaker labels and timestamps"),
-    ("segment_and_chunk",      "Chunking into clinical segments",  "ingestion",   "Splitting conversation into topical clinical chunks"),
     ("extract_candidates",     "Extracting clinical entities",     "extraction",  "NLP extraction of medications, diagnoses, vitals, ICD-10"),
+    ("run_diagnostic_reasoning", "Diagnostic reasoning",           "extraction",  "LLM differential diagnosis over extracted candidates"),
     ("retrieve_evidence",      "Grounding evidence (pgvector)",    "extraction",  "Anchoring each fact to its source utterance via semantic search"),
     ("fill_structured_record", "Compiling structured record",      "extraction",  "Mapping extracted facts to the typed StructuredRecord schema"),
-    ("clinical_suggestions",   "Checking drug interactions",       "validation",  "Cross-checking allergies and drug-drug interactions"),
+    ("run_clinical_suggestions", "Checking drug interactions",     "validation",  "Cross-checking allergies and drug-drug interactions"),
     ("validate_and_score",     "Validating & confidence scoring",  "validation",  "Pydantic validation, per-field confidence scoring, flag assignment"),
     ("repair",                 "Repairing schema errors",          "validation",  "LLM-guided repair of schema validation failures (max 3 attempts)"),
     ("conflict_resolution",    "Resolving clinical conflicts",     "validation",  "Resolving contradictions between new and historical facts"),

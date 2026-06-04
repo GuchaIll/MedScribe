@@ -8,10 +8,35 @@ context-aware, testable graph builder.
 Nodes receive services through AgentContext (Anthropic agent pattern) 
 rather than importing them directly.
 
-Pipeline topology (with DB integration):
-  greeting → load_patient_context → preprocess (ingest+normalize+segment) → clean →
-  extract (parallel query-value) → diagnostic_reasoning → evidence →
-  fill_record → clinical_suggestions → validate →
+Pipeline topology — CANONICAL 16-node structure (single source of truth).
+Every other surface (pipeline_progress.py PIPELINE_NODE_DEFS, the frontend
+pipelineNodes.ts catalogue, README, docs/api/session.md, docs/architecture.md)
+mirrors the node names and ordering registered below.
+
+  13 always-on nodes (linear main path):
+     1. greeting
+     2. load_patient_context
+     3. preprocess           (ingest + normalize + segment, merged into one node)
+     4. clean_transcription
+     5. extract_candidates
+     6. diagnostic_reasoning
+     7. retrieve_evidence
+     8. fill_structured_record
+     9. clinical_suggestions
+    10. validate_and_score
+    14. generate_note
+    15. package_outputs
+    16. persist_results
+
+  3 conditional nodes (entered only via validate_and_score routing):
+    11. repair               (loops back to validate_and_score, max 3 attempts)
+    12. conflict_resolution  (→ human_review_gate if unresolved, else generate_note)
+    13. human_review_gate    (interrupt point for physician sign-off)
+
+Flow:
+  greeting → load_patient_context → preprocess → clean_transcription →
+    extract_candidates → run_diagnostic_reasoning → retrieve_evidence →
+    fill_structured_record → run_clinical_suggestions → validate_and_score →
   [repair loop | conflict_resolution | human_review_gate] →
   generate_note → package_outputs → persist_results → END
 """
@@ -106,10 +131,10 @@ def build_graph(
         "preprocess":             preprocess_node,
         "clean_transcription":    clean_transcription_node,
         "extract_candidates":     extract_candidates_node,
-        "diagnostic_reasoning_node": diagnostic_reasoning_node,
+        "run_diagnostic_reasoning": diagnostic_reasoning_node,
         "retrieve_evidence":      retrieve_evidence_node,
         "fill_structured_record": fill_structured_record_node,
-        "clinical_suggestions_node": clinical_suggestions_node,
+        "run_clinical_suggestions": clinical_suggestions_node,
         "validate_and_score":     validate_and_score_node,
         "repair":                 repair_node,
         "conflict_resolution":    conflict_resolution_node,
@@ -128,11 +153,11 @@ def build_graph(
     graph.add_edge("load_patient_context", "preprocess")
     graph.add_edge("preprocess", "clean_transcription")
     graph.add_edge("clean_transcription", "extract_candidates")
-    graph.add_edge("extract_candidates", "diagnostic_reasoning_node")
-    graph.add_edge("diagnostic_reasoning_node", "retrieve_evidence")
+    graph.add_edge("extract_candidates", "run_diagnostic_reasoning")
+    graph.add_edge("run_diagnostic_reasoning", "retrieve_evidence")
     graph.add_edge("retrieve_evidence", "fill_structured_record")
-    graph.add_edge("fill_structured_record", "clinical_suggestions_node")
-    graph.add_edge("clinical_suggestions_node", "validate_and_score")
+    graph.add_edge("fill_structured_record", "run_clinical_suggestions")
+    graph.add_edge("run_clinical_suggestions", "validate_and_score")
 
     # ── Conditional edges: validate → repair loop / conflicts / review ──────
     graph.add_conditional_edges("validate_and_score", _route_after_validate)
@@ -145,6 +170,13 @@ def build_graph(
     graph.add_edge("persist_results", END)
 
     # ── Compile ─────────────────────────────────────────────────────────────
+    # Review model: human_review_gate flags records for review but does NOT
+    # block the encounter mid-pipeline. The graph runs through to persist_results,
+    # which stages flagged records in the Redis review queue for end-of-session
+    # physician sign-off instead of mutating the durable patient record. The
+    # interrupt_before wiring below remains available for callers that still want
+    # a synchronous pause, but the production (Kafka) path uses enable_interrupts=False.
+    #
     # NOTE: Redis checkpointing is disabled until langgraph is upgraded to
     # 0.3+ (currently 0.1.19 which is incompatible with
     # langgraph-checkpoint 4.x put() signature).  The pipeline streams

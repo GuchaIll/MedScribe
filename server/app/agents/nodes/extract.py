@@ -139,6 +139,68 @@ _EXTRACTION_QUERIES: List[Dict[str, Any]] = [
     },
 ]
 
+_CORE_EXTRACTION_CATEGORIES = {
+    "chief_complaint_hpi",
+    "conditions_diagnoses",
+}
+
+_CATEGORY_TRIGGER_PATTERNS: Dict[str, List[str]] = {
+    "demographics": [
+        "my name is",
+        "i am ",
+        "years old",
+        "date of birth",
+        "dob",
+        "mrn",
+    ],
+    "medications_allergies": [
+        "medication",
+        "medicine",
+        "tablet",
+        " mg",
+        "daily",
+        "allergic",
+        "allergy",
+        "rash",
+        "penicillin",
+    ],
+    "vitals_labs": [
+        "blood pressure",
+        "heart rate",
+        "temperature",
+        "spo2",
+        "pulse",
+        "lab",
+        "glucose",
+        "creatinine",
+        "a1c",
+    ],
+    "history_social_ros": [
+        "family history",
+        "social history",
+        "smoke",
+        "smoking",
+        "alcohol",
+        "drug use",
+        "review of systems",
+        "denies",
+        "surgery",
+        "hospitalized",
+    ],
+    "assessment_plan": [
+        "assessment",
+        "plan",
+        "recommend",
+        "follow up",
+        "follow-up",
+        "start taking",
+        "we will",
+        "i want you to",
+        "prescribe",
+        "order",
+    ],
+}
+
 
 def extract_candidates_node(state: GraphState, ctx: AgentContext) -> GraphState:
     """
@@ -179,6 +241,7 @@ def extract_candidates_node(state: GraphState, ctx: AgentContext) -> GraphState:
         f"[Chunk {i}] ({chunk.get('source', 'unknown')})\n{chunk.get('text', '')}"
         for i, chunk in enumerate(chunks)
     ])
+    selected_queries = _select_extraction_queries(full_text, chunks)
 
     # Get the shared LLM client from context
     llm = ctx.llm if ctx and ctx.llm else None
@@ -207,7 +270,7 @@ def extract_candidates_node(state: GraphState, ctx: AgentContext) -> GraphState:
     with ThreadPoolExecutor(max_workers=_MAX_EXTRACT_WORKERS) as pool:
         futures = {
             pool.submit(_run_query, q): q["category"]
-            for q in _EXTRACTION_QUERIES
+            for q in selected_queries
         }
         for future in as_completed(futures):
             category = futures[future]
@@ -221,10 +284,10 @@ def extract_candidates_node(state: GraphState, ctx: AgentContext) -> GraphState:
                 logger.warning("[Extract Candidates] Category %s failed: %s", category, exc)
 
     _t1 = _time.monotonic()
-    print(f"[Extract] LLM parallel queries took {_t1 - _t0:.1f}s for {len(_EXTRACTION_QUERIES)} categories")
+    print(f"[Extract] LLM parallel queries took {_t1 - _t0:.1f}s for {len(selected_queries)} categories")
 
     # All category queries count as LLM calls
-    llm_calls_used += len(_EXTRACTION_QUERIES)
+    llm_calls_used += len(selected_queries)
 
     # Canonicalize entities
     candidates = _canonicalize_candidates(candidates)
@@ -252,10 +315,39 @@ def extract_candidates_node(state: GraphState, ctx: AgentContext) -> GraphState:
     logger.info(
         "[Extract Candidates] Extracted %d candidate facts via %d parallel queries "
         "(LLM calls: %d/%d)",
-        len(candidates), len(_EXTRACTION_QUERIES), llm_calls_used, max_llm_calls,
+        len(candidates), len(selected_queries), llm_calls_used, max_llm_calls,
     )
 
     return state
+
+
+def _select_extraction_queries(
+    full_text: str,
+    chunks: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Select only the extraction categories justified by transcript cues.
+
+    The full seven-query fan-out is expensive for short conversational
+    transcripts where most categories are obviously absent. Keep the core HPI
+    and diagnosis passes, then opt into the rest via simple lexical triggers.
+    """
+    normalized_text = full_text.lower()
+    has_document_chunk = any(chunk.get("source") == "document" for chunk in chunks)
+
+    if has_document_chunk:
+        return list(_EXTRACTION_QUERIES)
+
+    selected_categories = set(_CORE_EXTRACTION_CATEGORIES)
+    for category, patterns in _CATEGORY_TRIGGER_PATTERNS.items():
+        if any(pattern in normalized_text for pattern in patterns):
+            selected_categories.add(category)
+
+    return [
+        query
+        for query in _EXTRACTION_QUERIES
+        if query["category"] in selected_categories
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -518,7 +610,12 @@ def _apply_grounding_verification(
     if ctx.embedding_service is None:
         return candidates
 
+    grounding_available = True
+
     for candidate in candidates:
+        if not grounding_available:
+            break
+
         provenance = candidate.get("provenance", {})
         evidence_list = provenance.get("evidence", []) if isinstance(provenance, dict) else []
         if not evidence_list:
@@ -550,6 +647,7 @@ def _apply_grounding_verification(
                     f"{grounding_score:.3f} < {ctx.grounding_threshold}"
                 )
         except Exception as e:
+            grounding_available = False
             logger.debug(f"[Extract] Grounding check failed for {candidate.get('fact_id')}: {e}")
 
     return candidates

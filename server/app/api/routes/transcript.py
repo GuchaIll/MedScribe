@@ -1,4 +1,4 @@
-"""Transcript routes — LLM-based speaker reclassification."""
+"""Transcript routes — temporary LLM-based speaker reclassification fallback."""
 import os
 import json
 from fastapi import APIRouter, HTTPException
@@ -28,8 +28,11 @@ class ReclassifyResponse(BaseModel):
 async def reclassify_speakers(body: ReclassifyRequest):
     """
     Use LLM to classify each utterance as 'Clinician' or 'Patient' based on
-    clinical conversation patterns. Calls Groq directly to avoid loading the
-    ML model registry (which triggers the pyannote/torch DLL conflict).
+    clinical conversation patterns.
+
+    This is a temporary fallback while the planned Whisper + pyannote service
+    for transcript correction and speaker-role detection is still being built.
+    It calls Groq directly to avoid loading the local ML model registry.
     """
     if not body.messages:
         return ReclassifyResponse(messages=[])

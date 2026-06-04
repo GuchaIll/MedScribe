@@ -945,6 +945,15 @@ class TestGraphWiring:
         from app.agents.graph import build_graph  # noqa: F401
         # If this import succeeds, the diagnostic_reasoning import in graph.py is valid.
 
+    def test_build_graph_succeeds_with_conflicting_state_keys(self):
+        """Graph construction should not reuse state-field names as node IDs."""
+        from app.agents.config import AgentContext
+        from app.agents.graph import build_graph
+
+        graph = build_graph(AgentContext(), enable_interrupts=False)
+
+        assert graph is not None
+
     def test_agentcontext_has_tool_universe_service(self):
         from app.agents.config import AgentContext
         ctx = AgentContext()

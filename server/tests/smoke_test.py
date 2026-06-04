@@ -1,5 +1,5 @@
 """
-Smoke test: exercises the full 17-node LangGraph pipeline against
+Smoke test: exercises the full 16-node LangGraph pipeline against
 the live PostgreSQL + pgvector database.
 
 Usage:
@@ -79,7 +79,7 @@ SAMPLE_SEGMENTS = [
 
 def main():
     print("=" * 70)
-    print("  MedScribe — Smoke Test (17-node LangGraph Pipeline)")
+    print("  MedScribe — Smoke Test (16-node LangGraph Pipeline)")
     print("=" * 70)
 
     # ── Step 1: Verify database ──────────────────────────────────────────
@@ -169,7 +169,7 @@ def main():
             enable_interrupts=False,
             db_session=db,
         )
-        print("      ✓ WorkflowEngine built (17-node graph)")
+        print("      ✓ WorkflowEngine built (16-node graph)")
     except Exception as e:
         print(f"      ✗ Failed: {e}")
         traceback.print_exc()
