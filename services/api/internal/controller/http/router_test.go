@@ -38,7 +38,13 @@ func (s *sessionUCStub) EndSession(context.Context, string) (*usecase.SessionEnd
 	return &usecase.SessionEndResponse{SessionID: "s1", Status: "completed"}, nil
 }
 func (s *sessionUCStub) ProcessTranscription(context.Context, usecase.TranscribeRequest) (*usecase.TranscribeResponse, error) {
-	return &usecase.TranscribeResponse{SessionID: "s1", Speaker: "doctor", TurnsStored: 1}, nil
+	return &usecase.TranscribeResponse{SessionID: "s1", Speaker: "doctor", TurnsStored: 1, Source: "gateway"}, nil
+}
+func (s *sessionUCStub) UploadAudioSegment(context.Context, string, usecase.UploadAudioSegmentRequest, *multipart.FileHeader, multipart.File) (*usecase.UploadAudioSegmentResponse, error) {
+	return &usecase.UploadAudioSegmentResponse{SessionID: "s1", SegmentID: "seg-1", Accepted: true, Status: "queued"}, nil
+}
+func (s *sessionUCStub) UploadSpeakerRoleSample(context.Context, string, usecase.UploadSpeakerRoleSampleRequest, *multipart.FileHeader, multipart.File) (*usecase.SpeakerRoleCheckResponse, error) {
+	return &usecase.SpeakerRoleCheckResponse{SessionID: "s1", Required: true, Status: "collecting"}, nil
 }
 func (s *sessionUCStub) TriggerPipeline(context.Context, usecase.TriggerPipelineRequest) (*usecase.TriggerPipelineResponse, error) {
 	return &usecase.TriggerPipelineResponse{Accepted: true, PipelineID: "p1"}, nil
@@ -51,6 +57,9 @@ func (s *sessionUCStub) UploadDocument(context.Context, string, *multipart.FileH
 }
 func (s *sessionUCStub) GetRecord(context.Context, string) (*entity.MedicalRecord, error) {
 	return &entity.MedicalRecord{ID: "r1"}, nil
+}
+func (s *sessionUCStub) GetLiveTranscript(context.Context, string) (*usecase.LiveTranscriptResponse, error) {
+	return &usecase.LiveTranscriptResponse{}, nil
 }
 func (s *sessionUCStub) GetDocuments(context.Context, string) ([]*entity.Document, error) {
 	return nil, nil
@@ -109,5 +118,28 @@ func TestRouterHealthAndProtectedRoute(t *testing.T) {
 	h.ServeHTTP(protectedRec, protectedReq)
 	if protectedRec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected protected route without auth to return 401, got %d", protectedRec.Code)
+	}
+}
+
+func TestRouterAllowsAnonymousDemoAccessWhenEnabled(t *testing.T) {
+	cfg := &config.Config{
+		CORS: config.CORSConfig{AllowedOrigins: []string{"http://localhost:3000"}},
+		Auth: config.AuthConfig{AllowAnonymousDemoAccess: true},
+	}
+	h := Router(
+		cfg,
+		zap.NewNop(),
+		prometheus.NewRegistry(),
+		&authUCStub{},
+		&sessionUCStub{},
+		&patientUCStub{},
+		&assistantUCStub{},
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/session/start", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected anonymous demo access to allow session start, got %d", rec.Code)
 	}
 }

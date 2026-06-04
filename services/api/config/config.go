@@ -18,6 +18,7 @@ type Config struct {
 	Kafka         KafkaConfig
 	Orchestrator  OrchestratorConfig
 	PythonBackend PythonBackendConfig
+	SpeechWorker  SpeechWorkerConfig
 	Auth          AuthConfig
 	Log           LogConfig
 	CORS          CORSConfig
@@ -76,12 +77,21 @@ type PythonBackendConfig struct {
 	ConsumerGroup string
 }
 
+type SpeechWorkerConfig struct {
+	BaseURL        string
+	RequestTimeout time.Duration
+	ConsumerGroup  string
+}
+
 type AuthConfig struct {
 	// JWT_SECRET_KEY — required. HMAC-SHA256 signing key for JWT.
 	JWTSecret string
 	TokenTTL  time.Duration
 	// ENCRYPTION_KEY — required. 32-byte hex key for AES-256-GCM PHI encryption.
 	EncryptionKey string
+	// ALLOW_ANONYMOUS_DEMO_ACCESS — when true, bypasses JWT enforcement for
+	// API routes so the legacy demo client can talk to the gateway.
+	AllowAnonymousDemoAccess bool
 }
 
 type LogConfig struct {
@@ -128,10 +138,16 @@ func New() (*Config, error) {
 			PipelineTimeout: envDuration("PYTHON_PIPELINE_TIMEOUT", 5*time.Minute),
 			ConsumerGroup:   envOrDefault("KAFKA_CONSUMER_GROUP", "medscribe-pipeline-proxy"),
 		},
+		SpeechWorker: SpeechWorkerConfig{
+			BaseURL:        envOrDefault("SPEECH_WORKER_URL", "http://localhost:3002"),
+			RequestTimeout: envDuration("SPEECH_WORKER_TIMEOUT", 90*time.Second),
+			ConsumerGroup:  envOrDefault("SPEECH_WORKER_CONSUMER_GROUP", "medscribe-speech-proxy"),
+		},
 		Auth: AuthConfig{
-			JWTSecret:     requireEnv("JWT_SECRET_KEY"),
-			TokenTTL:      envDuration("JWT_TOKEN_TTL", 24*time.Hour),
-			EncryptionKey: requireEnv("ENCRYPTION_KEY"),
+			JWTSecret:                requireEnv("JWT_SECRET_KEY"),
+			TokenTTL:                 envDuration("JWT_TOKEN_TTL", 24*time.Hour),
+			EncryptionKey:            requireEnv("ENCRYPTION_KEY"),
+			AllowAnonymousDemoAccess: envBool("ALLOW_ANONYMOUS_DEMO_ACCESS", false),
 		},
 		Log: LogConfig{
 			Level: envOrDefault("LOG_LEVEL", "info"),
@@ -173,6 +189,18 @@ func envDuration(key string, def time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			return d
+		}
+	}
+	return def
+}
+
+func envBool(key string, def bool) bool {
+	if v := os.Getenv(key); v != "" {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes", "on":
+			return true
+		case "0", "false", "no", "off":
+			return false
 		}
 	}
 	return def

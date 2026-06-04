@@ -2,14 +2,15 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 	"github.com/medscribe/services/api/internal/entity"
 	"github.com/medscribe/services/api/internal/repo"
 	"github.com/medscribe/services/api/pkg/cache"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
@@ -64,9 +65,22 @@ func (uc *sessionUseCase) StartSession(ctx context.Context, userID string) (*Ses
 	if err != nil {
 		return nil, fmt.Errorf("start session: %w", err)
 	}
+	if err = writeActiveSessionState(ctx, uc.redis, &activeSessionState{
+		SessionID:        created.ID,
+		DoctorID:         created.DoctorID,
+		Status:           string(created.Status),
+		StartedAtMs:      created.StartedAt.UnixMilli(),
+		SpeakerRoleCheck: defaultSpeakerRoleCheckState(),
+	}); err != nil {
+		uc.log.Warn("failed to initialize active session state",
+			zap.String("session_id", created.ID),
+			zap.Error(err),
+		)
+	}
 	return &SessionStartResponse{
-		SessionID: created.ID,
-		Status:    string(created.Status),
+		SessionID:        created.ID,
+		Status:           string(created.Status),
+		SpeakerRoleCheck: buildSpeakerRoleCheckResponse(created.ID, defaultSpeakerRoleCheckState()),
 	}, nil
 }
 
@@ -80,6 +94,14 @@ func (uc *sessionUseCase) EndSession(ctx context.Context, sessionID string) (*Se
 		return nil, entity.ErrSessionClosed
 	}
 
+	flushedTurns, workflowState, err := uc.flushTranscriptBuffer(ctx, s)
+	if err != nil {
+		return nil, fmt.Errorf("end session: flush transcript buffer: %w", err)
+	}
+	if workflowState != "" {
+		s.WorkflowState = &workflowState
+	}
+
 	now := time.Now().UTC()
 	s.Status = entity.SessionStatusCompleted
 	s.CompletedAt = &now
@@ -90,9 +112,80 @@ func (uc *sessionUseCase) EndSession(ctx context.Context, sessionID string) (*Se
 	if err != nil {
 		return nil, fmt.Errorf("end session: %w", err)
 	}
+	if flushedTurns > 0 {
+		if err = uc.redis.Del(ctx, transcriptBufferKey(sessionID)).Err(); err != nil {
+			uc.log.Warn("failed to clear transcript buffer after session end",
+				zap.String("session_id", sessionID),
+				zap.Int("flushed_turns", flushedTurns),
+				zap.Error(err),
+			)
+		}
+	}
+	if err = updateActiveSessionState(ctx, uc.redis, sessionID, func(state *activeSessionState) {
+		completedAtMs := now.UnixMilli()
+		state.Status = string(entity.SessionStatusCompleted)
+		state.CompletedAtMs = &completedAtMs
+		state.TranscriptTurnsBuffered = 0
+	}); err != nil {
+		uc.log.Warn("failed to finalize active session state",
+			zap.String("session_id", sessionID),
+			zap.Error(err),
+		)
+	}
 	return &SessionEndResponse{
 		SessionID: updated.ID,
 		Status:    string(updated.Status),
 		Duration:  updated.DurationSeconds,
 	}, nil
+}
+
+func (uc *sessionUseCase) flushTranscriptBuffer(
+	ctx context.Context,
+	session *entity.Session,
+) (int, string, error) {
+	rawTurns, err := uc.redis.LRange(ctx, transcriptBufferKey(session.ID), 0, -1).Result()
+	if err != nil {
+		return 0, "", err
+	}
+	if len(rawTurns) == 0 {
+		return 0, "", nil
+	}
+
+	bufferedTurns := make([]entity.TranscriptTurn, 0, len(rawTurns))
+	for _, raw := range rawTurns {
+		var turn entity.TranscriptTurn
+		if err = json.Unmarshal([]byte(raw), &turn); err != nil {
+			return 0, "", fmt.Errorf("decode transcript turn: %w", err)
+		}
+		bufferedTurns = append(bufferedTurns, turn)
+	}
+
+	state := map[string]any{}
+	if session.WorkflowState != nil && *session.WorkflowState != "" {
+		if err = json.Unmarshal([]byte(*session.WorkflowState), &state); err != nil {
+			return 0, "", fmt.Errorf("decode workflow state: %w", err)
+		}
+	}
+
+	var existing []entity.TranscriptTurn
+	if rawExisting, ok := state["transcript_turns"]; ok {
+		b, marshalErr := json.Marshal(rawExisting)
+		if marshalErr != nil {
+			return 0, "", fmt.Errorf("encode existing transcript turns: %w", marshalErr)
+		}
+		if err = json.Unmarshal(b, &existing); err != nil {
+			return 0, "", fmt.Errorf("decode existing transcript turns: %w", err)
+		}
+	}
+
+	existing = append(existing, bufferedTurns...)
+	state["transcript_turns"] = existing
+	state["transcript_turn_count"] = len(existing)
+	state["transcript_buffer_flushed_at"] = time.Now().UTC().Format(time.RFC3339Nano)
+
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		return 0, "", fmt.Errorf("encode workflow state: %w", err)
+	}
+	return len(bufferedTurns), string(encoded), nil
 }

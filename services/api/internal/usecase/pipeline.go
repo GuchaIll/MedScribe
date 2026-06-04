@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 	"github.com/medscribe/services/api/internal/entity"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
@@ -42,6 +42,16 @@ func (uc *sessionUseCase) TriggerPipeline(ctx context.Context, req TriggerPipeli
 	if s.Status == entity.SessionStatusCompleted {
 		return nil, entity.ErrSessionClosed
 	}
+	if err := updateActiveSessionState(ctx, uc.redis, req.SessionID, func(state *activeSessionState) {
+		state.Status = string(s.Status)
+		state.PatientID = req.PatientID
+		state.DoctorID = req.DoctorID
+	}); err != nil {
+		uc.log.Warn("failed to refresh active session metadata before pipeline",
+			zap.String("session_id", req.SessionID),
+			zap.Error(err),
+		)
+	}
 
 	pipelineID := uuid.NewString()
 	msg := pipelineTriggerMsg{
@@ -58,9 +68,8 @@ func (uc *sessionUseCase) TriggerPipeline(ctx context.Context, req TriggerPipeli
 		return nil, fmt.Errorf("trigger pipeline: publish to Kafka: %w", err)
 	}
 
-	// Seed the Redis progress hash so the status endpoint returns pending
-	// immediately instead of 404. Fire-and-forget: the status endpoint
-	// handles the brief window before this completes by retrying.
+	// Seed the Redis status synchronously so an immediate follow-up poll
+	// never races a background write and returns a transient 404.
 	statusKey := fmt.Sprintf("pipeline:%s", req.SessionID)
 	initial := entity.PipelineStatus{
 		SessionID:   req.SessionID,
@@ -68,11 +77,13 @@ func (uc *sessionUseCase) TriggerPipeline(ctx context.Context, req TriggerPipeli
 		Status:      "pending",
 		StartedAtMs: time.Now().UnixMilli(),
 	}
-	go func() {
-		if b, merr := json.Marshal(initial); merr == nil {
-			_ = uc.redis.Set(context.Background(), statusKey, b, 24*time.Hour).Err()
+	if b, err := json.Marshal(initial); err == nil {
+		if err = uc.redis.Set(ctx, statusKey, b, 24*time.Hour).Err(); err != nil {
+			return nil, fmt.Errorf("trigger pipeline: seed redis status: %w", err)
 		}
-	}()
+	} else {
+		return nil, fmt.Errorf("trigger pipeline: marshal status: %w", err)
+	}
 
 	uc.log.Info("pipeline trigger published",
 		zap.String("session_id", req.SessionID),

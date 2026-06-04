@@ -62,18 +62,23 @@ func Router(
 
 	// ─── protected routes ─────────────────────────────────────────────────────
 	r.Group(func(r chi.Router) {
-		r.Use(jwtMiddleware)
+		if !cfg.Auth.AllowAnonymousDemoAccess {
+			r.Use(jwtMiddleware)
+		}
 
 		// Session
-		sessionH := v1.NewSessionHandler(sessionUC, log)
+		sessionH := v1.NewSessionHandler(sessionUC, log, cfg.Auth.AllowAnonymousDemoAccess)
 		r.Route("/api/session", func(r chi.Router) {
 			r.Post("/start", sessionH.Start)
 			r.Post("/{sessionID}/end", sessionH.End)
 			r.Post("/{sessionID}/transcribe", sessionH.Transcribe)
+			r.Post("/{sessionID}/audio-segment", sessionH.UploadAudioSegment)
+			r.Post("/{sessionID}/speaker-role-check", sessionH.UploadSpeakerRoleSample)
 			r.Post("/{sessionID}/pipeline", sessionH.TriggerPipeline)
 			r.Get("/{sessionID}/pipeline/status", sessionH.PipelineStatus)
 			r.Post("/{sessionID}/upload", sessionH.UploadDocument)
 			r.Get("/{sessionID}/record", sessionH.GetRecord)
+			r.Get("/{sessionID}/live-transcript", sessionH.GetLiveTranscript)
 			r.Get("/{sessionID}/documents", sessionH.GetDocuments)
 			r.Get("/{sessionID}/queue", sessionH.GetQueue)
 			r.Patch("/{sessionID}/queue/{itemID}", sessionH.UpdateQueueItem)
@@ -104,6 +109,7 @@ func Router(
 		r.Route("/api/llm", func(r chi.Router) {
 			r.Get("/providers", llmH.GetProviders)
 			r.Post("/provider", llmH.SelectProvider)
+			r.Post("/provider/select", llmH.SelectProvider)
 		})
 
 		// Transcript

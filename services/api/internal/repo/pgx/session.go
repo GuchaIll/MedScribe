@@ -3,6 +3,7 @@ package pgxrepo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -105,9 +106,13 @@ func (r *SessionRepo) ListByDoctor(ctx context.Context, doctorID string, limit, 
 
 func (r *SessionRepo) GetDocuments(ctx context.Context, sessionID string) ([]*entity.Document, error) {
 	const q = `
-		SELECT id, session_id, original_name, storage_path, mime_type,
-		       COALESCE(extracted_text, ''), processed_at, created_at
-		FROM session_documents
+		SELECT id, session_id, original_filename, stored_path, COALESCE(file_type, ''),
+		       COALESCE(extracted_text, ''), ocr_status::text, COALESCE(document_type, ''),
+		       COALESCE(classification_confidence, 0), COALESCE(overall_confidence, 0),
+		       COALESCE(field_count, 0), COALESCE(conflict_count, 0),
+		       COALESCE(processing_errors, '[]'::json), COALESCE(structured_fields, '[]'::json),
+		       COALESCE(conflicts, '[]'::json), processed_at, created_at
+		FROM documents
 		WHERE session_id = $1
 		ORDER BY created_at ASC`
 
@@ -119,16 +124,63 @@ func (r *SessionRepo) GetDocuments(ctx context.Context, sessionID string) ([]*en
 
 	var docs []*entity.Document
 	for rows.Next() {
-		var d entity.Document
+		var (
+			d                    entity.Document
+			ocrStatus            string
+			processingErrorsJSON []byte
+			fieldChangesJSON     []byte
+			conflictDetailsJSON  []byte
+		)
 		if err = rows.Scan(
 			&d.ID, &d.SessionID, &d.OriginalName, &d.StoragePath, &d.MimeType,
-			&d.ExtractedText, &d.ProcessedAt, &d.CreatedAt,
+			&d.ExtractedText, &ocrStatus, &d.DocumentType,
+			&d.ClassificationConfidence, &d.OverallConfidence,
+			&d.FieldsExtracted, &d.ConflictsDetected,
+			&processingErrorsJSON, &fieldChangesJSON, &conflictDetailsJSON,
+			&d.ProcessedAt, &d.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("session: scan document: %w", err)
 		}
+		if err = json.Unmarshal(processingErrorsJSON, &d.ProcessingErrors); err != nil {
+			return nil, fmt.Errorf("session: decode document processing errors: %w", err)
+		}
+		if err = json.Unmarshal(fieldChangesJSON, &d.FieldChanges); err != nil {
+			return nil, fmt.Errorf("session: decode document field changes: %w", err)
+		}
+		if err = json.Unmarshal(conflictDetailsJSON, &d.ConflictDetails); err != nil {
+			return nil, fmt.Errorf("session: decode document conflict details: %w", err)
+		}
+		d.Status = normalizeDocumentStatus(ocrStatus, d.ConflictsDetected, len(d.ProcessingErrors))
 		docs = append(docs, &d)
 	}
 	return docs, rows.Err()
+}
+
+func normalizeDocumentStatus(ocrStatus string, conflicts, processingErrors int) string {
+	switch ocrStatus {
+	case "failed":
+		return "failed"
+	case "processing":
+		return "processing"
+	case "completed":
+		if processingErrors > 0 {
+			return "failed"
+		}
+		if conflicts > 0 {
+			return "conflicts"
+		}
+		return "processed"
+	case "pending":
+		return "pending_ocr"
+	default:
+		if processingErrors > 0 {
+			return "failed"
+		}
+		if conflicts > 0 {
+			return "conflicts"
+		}
+		return ocrStatus
+	}
 }
 
 func (r *SessionRepo) GetQueue(ctx context.Context, sessionID string) ([]*entity.QueueItem, error) {
@@ -185,8 +237,12 @@ func (r *SessionRepo) UpdateQueueItem(
 
 func (r *SessionRepo) GetRecord(ctx context.Context, sessionID string) (*entity.MedicalRecord, error) {
 	const q = `
-		SELECT id, patient_id, session_id, template_type,
-		       structured_data, clinical_note, is_finalized, version, created_at, finalized_at
+		SELECT id, patient_id, session_id,
+		       COALESCE(template_used, record_type, 'SOAP') AS template_type,
+		       structured_data,
+		       COALESCE(soap_note, '') AS clinical_note,
+		       is_final AS is_finalized,
+		       version, created_at, finalized_at
 		FROM medical_records
 		WHERE session_id = $1
 		ORDER BY version DESC

@@ -2,6 +2,8 @@ package v1
 
 import (
 	"net/http"
+	"os"
+	"strings"
 
 	"go.uber.org/zap"
 )
@@ -56,7 +58,42 @@ var providerMeta = []map[string]any{
 }
 
 func (h *LLMHandler) GetProviders(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"providers": providerMeta})
+	selectedProvider := strings.ToLower(strings.TrimSpace(os.Getenv("LLM_PROVIDER")))
+	selectedModel := strings.TrimSpace(os.Getenv("LLM_NAME"))
+
+	withAvailability := make([]map[string]any, 0, len(providerMeta))
+	availableNames := make([]string, 0, len(providerMeta))
+	for _, provider := range providerMeta {
+		name, _ := provider["name"].(string)
+		available := isProviderConfigured(name)
+
+		next := map[string]any{
+			"name":          provider["name"],
+			"display_name":  provider["display_name"],
+			"description":   provider["description"],
+			"default_model": provider["default_model"],
+			"available":     available,
+		}
+		if available {
+			availableNames = append(availableNames, name)
+		}
+		if selectedProvider != "" && selectedModel != "" && name == selectedProvider {
+			next["default_model"] = selectedModel
+		}
+		withAvailability = append(withAvailability, next)
+	}
+
+	defaultProvider := selectedProvider
+	if defaultProvider == "" || !isProviderConfigured(defaultProvider) {
+		defaultProvider = firstAvailableProvider()
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"providers":         withAvailability,
+		"default_provider":  defaultProvider,
+		"selected_provider": defaultProvider,
+		"available_count":   len(availableNames),
+	})
 }
 
 // SelectProvider sets the active LLM provider for the authenticated session.
@@ -86,6 +123,49 @@ func (h *LLMHandler) SelectProvider(w http.ResponseWriter, r *http.Request) {
 	// TODO Phase 5: persist selection to user session / Redis.
 	writeJSON(w, http.StatusOK, map[string]any{
 		"provider": body.ProviderName,
+		"model":    modelForProvider(body.ProviderName),
 		"message":  "provider selected",
 	})
+}
+
+func isProviderConfigured(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "groq":
+		return strings.TrimSpace(os.Getenv("GROQ_API_KEY")) != ""
+	case "openai":
+		return strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != ""
+	case "anthropic":
+		return strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) != ""
+	case "google":
+		return strings.TrimSpace(os.Getenv("GOOGLE_API_KEY")) != ""
+	case "openrouter":
+		return strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")) != ""
+	default:
+		return false
+	}
+}
+
+func firstAvailableProvider() string {
+	for _, name := range []string{"groq", "openai", "anthropic", "google", "openrouter"} {
+		if isProviderConfigured(name) {
+			return name
+		}
+	}
+	return ""
+}
+
+func modelForProvider(name string) string {
+	selectedProvider := strings.ToLower(strings.TrimSpace(os.Getenv("LLM_PROVIDER")))
+	selectedModel := strings.TrimSpace(os.Getenv("LLM_NAME"))
+	if selectedProvider != "" && selectedModel != "" && selectedProvider == strings.ToLower(strings.TrimSpace(name)) {
+		return selectedModel
+	}
+	for _, provider := range providerMeta {
+		if provider["name"] == strings.ToLower(strings.TrimSpace(name)) {
+			if model, ok := provider["default_model"].(string); ok {
+				return model
+			}
+		}
+	}
+	return ""
 }

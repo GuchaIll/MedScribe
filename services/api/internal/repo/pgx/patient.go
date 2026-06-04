@@ -91,8 +91,12 @@ func (r *PatientRepo) HistoryRecords(
 	ctx context.Context, patientID string, limit, offset int,
 ) ([]*entity.MedicalRecord, error) {
 	const q = `
-		SELECT id, patient_id, session_id, template_type,
-		       structured_data, clinical_note, is_finalized, version, created_at, finalized_at
+		SELECT id, patient_id, session_id,
+		       COALESCE(template_used, record_type, 'SOAP') AS template_type,
+		       structured_data,
+		       COALESCE(soap_note, '') AS clinical_note,
+		       is_final AS is_finalized,
+		       version, created_at, finalized_at
 		FROM medical_records
 		WHERE patient_id = $1
 		ORDER BY created_at DESC
