@@ -12,7 +12,10 @@ async function apiFetch(path, options = {}) {
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`API ${res.status}: ${body}`);
+    const err = new Error(`API ${res.status}: ${body}`);
+    err.status = res.status;
+    err.body = body;
+    throw err;
   }
   const ct = res.headers.get('content-type') ?? '';
   if (ct.includes('application/json')) return res.json();
