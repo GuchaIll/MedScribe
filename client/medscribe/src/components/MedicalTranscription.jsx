@@ -131,8 +131,9 @@ export default function MedicalTranscription() {
           setStructuredRecord(data.structured_record);
           setLastRecordUpdate(data.last_updated || new Date().toISOString());
         }
-      } catch {
-        /* ignore errors - endpoint may not be available yet */
+      } catch (err) {
+        if (err?.status === 404) return;
+        /* ignore transient errors - endpoint may not be available yet */
       }
     };
     // Poll every 3 seconds during active session
@@ -151,6 +152,9 @@ export default function MedicalTranscription() {
         const bySegmentId = new Map(
           authoritativeSegments.map((seg) => [seg.segment_id, seg])
         );
+        if (authoritativeSegments.length > 0) {
+          console.debug("[live-transcript] authoritative segments", authoritativeSegments);
+        }
         if (bySegmentId.size === 0) return;
 
         setMsgs((prev) =>
