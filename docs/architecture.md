@@ -274,6 +274,10 @@ The assistant should prefer:
 This keeps recent-session questions fast without forcing every request through a
 full pipeline run.
 
+Whether MedScribe answers at all (explicit question vs visit dialogue) is
+governed by the intent gate and silence-default policy in
+[copilot_runtime_contract.md](./copilot_runtime_contract.md).
+
 ### 4. Session summary / discharge / SOAP generation flow
 
 1. User requests note generation
