@@ -70,6 +70,26 @@ celerybeat.pid
 # pipenv (project uses requirements.txt)
 Pipfile.lock
 
+# ── Go (services/) ──────────────────────────────────────────────────────────
+# Compiled binaries (note: *.so is covered in the Python section above)
+*.exe
+*.exe~
+*.dll
+*.dylib
+# Go test binary and coverage output
+*.test
+*.out
+# Built service binaries (`go build` / Dockerfile `-o medscribe-api`)
+medscribe-api
+services/api/app
+bin/
+# Go workspace files (local only)
+go.work
+go.work.sum
+# Go build/module cache (only appears if GOCACHE/GOMODCACHE point in-tree)
+.gocache/
+.gomodcache/
+
 # ── Environment & Secrets ───────────────────────────────────────────────────
 .env
 .env.local

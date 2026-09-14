@@ -6,6 +6,7 @@ import AgentCard from "./AgentCard";
 function Bubble({ msg, visible, onApprove, onSwitchTab }) {
   const isDoc = msg.speaker.role === "Physician";
   const isAgent = msg.speaker.role === "Agent";
+  const isUnknown = msg.speaker.role === "Unknown";
   const [hov, setHov] = useState(false);
 
   if (isAgent)
@@ -23,10 +24,10 @@ function Bubble({ msg, visible, onApprove, onSwitchTab }) {
       style={{
         display: "flex",
         gap: 11,
-        flexDirection: isDoc ? "row" : "row-reverse",
+        flexDirection: isUnknown ? "row" : isDoc ? "row" : "row-reverse",
         alignItems: "flex-start",
         maxWidth: 580,
-        marginLeft: isDoc ? 0 : "auto",
+        marginLeft: isUnknown || isDoc ? 0 : "auto",
         opacity: visible ? 1 : 0,
         transform: visible ? "translateY(0)" : "translateY(16px)",
         transition: "opacity 0.42s ease, transform 0.42s ease",
@@ -38,7 +39,7 @@ function Bubble({ msg, visible, onApprove, onSwitchTab }) {
           display: "flex",
           flexDirection: "column",
           gap: 5,
-          alignItems: isDoc ? "flex-start" : "flex-end",
+          alignItems: isUnknown || isDoc ? "flex-start" : "flex-end",
           minWidth: 0,
         }}
       >
@@ -47,7 +48,7 @@ function Bubble({ msg, visible, onApprove, onSwitchTab }) {
             display: "flex",
             alignItems: "center",
             gap: 8,
-            flexDirection: isDoc ? "row" : "row-reverse",
+            flexDirection: isUnknown || isDoc ? "row" : "row-reverse",
           }}
         >
           <span
@@ -78,11 +79,17 @@ function Bubble({ msg, visible, onApprove, onSwitchTab }) {
             padding: "13px 16px 10px",
             borderRadius: isDoc
               ? "4px 16px 16px 16px"
+              : isUnknown
+              ? "10px 16px 16px 16px"
               : "16px 4px 16px 16px",
             background: isDoc
               ? hov
                 ? "rgba(0,0,0,0.05)"
                 : "rgba(0,0,0,0.03)"
+              : isUnknown
+              ? hov
+                ? "rgba(125,211,252,0.08)"
+                : "rgba(125,211,252,0.05)"
               : hov
               ? "rgba(0,0,0,0.06)"
               : "rgba(0,0,0,0.04)",
@@ -102,7 +109,7 @@ function Bubble({ msg, visible, onApprove, onSwitchTab }) {
               lineHeight: 1.72,
               color: "#1a1a1a",
               fontFamily: "'Lora', Georgia, serif",
-              textAlign: isDoc ? "left" : "right",
+              textAlign: isUnknown || isDoc ? "left" : "right",
             }}
           >
             {msg.text}

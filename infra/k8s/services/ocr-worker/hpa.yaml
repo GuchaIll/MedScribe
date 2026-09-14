@@ -1,0 +1,21 @@
+# KEDA ScaledObject — scales the OCR worker on Kafka consumer lag. Requires
+# KEDA. consumerGroup MUST match the worker's effective group, which is the
+# pipeline group with a "-ocr" suffix (default "medscribe-pipeline-proxy-ocr").
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: medscribe-ocr-worker
+  namespace: medscribe
+spec:
+  scaleTargetRef:
+    name: medscribe-ocr-worker
+  minReplicaCount: 1
+  maxReplicaCount: 8
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka:9092
+        consumerGroup: medscribe-pipeline-proxy-ocr
+        topic: ocr.jobs
+        lagThreshold: "5"
+        offsetResetPolicy: earliest

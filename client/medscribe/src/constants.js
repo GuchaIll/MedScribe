@@ -20,6 +20,12 @@ export const AGENT = {
   avatar: null, // rendered as icon
 };
 
+export const UNKNOWN = {
+  name: "Pending Speaker",
+  role: "Unknown",
+  avatar: null,
+};
+
 /* ── Record field change status colors ── */
 export const CHANGE_COLORS = {
   added: {

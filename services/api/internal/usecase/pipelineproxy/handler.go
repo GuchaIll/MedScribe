@@ -3,7 +3,7 @@
 //
 // This is the strangler-fig bridge: the Go API gateway handles ingress (auth,
 // rate limiting, request validation, Kafka queueing) while the Python backend
-// continues to execute the 18-node LangGraph clinical pipeline. As individual
+// continues to execute the 16-node LangGraph clinical pipeline. As individual
 // pipeline nodes are ported to Go/Rust, this proxy shrinks until it is removed.
 //
 // Flow:
@@ -39,7 +39,7 @@ type Config struct {
 	PythonBaseURL string
 
 	// RequestTimeout is the maximum time to wait for the Python pipeline to
-	// complete a single run. The 18-node pipeline typically finishes in 10-60s
+	// complete a single run. The 16-node pipeline typically finishes in 10-60s
 	// depending on LLM latency; 5 minutes gives headroom for cold-start and
 	// large transcripts.
 	RequestTimeout time.Duration
@@ -65,6 +65,16 @@ type pythonPipelineRequest struct {
 	DoctorID     string          `json:"doctor_id"`
 	IsNewPatient bool            `json:"is_new_patient"`
 	Segments     json.RawMessage `json:"segments"`
+}
+
+type pythonPipelineResponse struct {
+	SessionID           string         `json:"session_id"`
+	Status              string         `json:"status"`
+	ClinicalNote        string         `json:"clinical_note"`
+	StructuredRecord    map[string]any `json:"structured_record"`
+	ClinicalSuggestions map[string]any `json:"clinical_suggestions"`
+	ValidationReport    map[string]any `json:"validation_report"`
+	Message             string         `json:"message"`
 }
 
 // Handler processes consumed Kafka messages by forwarding them to Python.
@@ -103,7 +113,7 @@ func (h *Handler) Handle(ctx context.Context, key, value []byte) error {
 	)
 
 	// Mark pipeline as "running" in Redis.
-	h.updateRedisStatus(ctx, msg.SessionID, msg.PipelineID, "running", "")
+	h.updateRedisStatus(ctx, msg.SessionID, msg.PipelineID, "running", "", nil)
 
 	// Build the request body matching Python's RunPipelineRequest schema.
 	reqBody := pythonPipelineRequest{
@@ -143,9 +153,16 @@ func (h *Handler) Handle(ctx context.Context, key, value []byte) error {
 		return fmt.Errorf("pipelineproxy: %s", errMsg)
 	}
 
+	var pipelineResp pythonPipelineResponse
+	if err = json.Unmarshal(body, &pipelineResp); err != nil {
+		errMsg := "decode python response: " + err.Error()
+		h.markFailed(ctx, msg.SessionID, msg.PipelineID, errMsg)
+		return fmt.Errorf("pipelineproxy: %s", errMsg)
+	}
+
 	// Python's PipelineProgressStore (now Redis-backed) writes per-node
 	// progress. On success we ensure the top-level key reflects completion.
-	h.updateRedisStatus(ctx, msg.SessionID, msg.PipelineID, "completed", "")
+	h.updateRedisStatus(ctx, msg.SessionID, msg.PipelineID, "completed", "", &pipelineResp)
 
 	h.log.Info("pipeline proxy: python completed",
 		zap.String("session_id", msg.SessionID),
@@ -163,10 +180,14 @@ func (h *Handler) markFailed(ctx context.Context, sessionID, pipelineID, errMsg 
 		zap.String("pipeline_id", pipelineID),
 		zap.String("error", errMsg),
 	)
-	h.updateRedisStatus(ctx, sessionID, pipelineID, "failed", errMsg)
+	h.updateRedisStatus(ctx, sessionID, pipelineID, "failed", errMsg, nil)
 }
 
-func (h *Handler) updateRedisStatus(ctx context.Context, sessionID, pipelineID, status, errMsg string) {
+func (h *Handler) updateRedisStatus(
+	ctx context.Context,
+	sessionID, pipelineID, status, errMsg string,
+	result *pythonPipelineResponse,
+) {
 	now := time.Now().UnixMilli()
 	ps := entity.PipelineStatus{
 		SessionID:   sessionID,
@@ -183,9 +204,20 @@ func (h *Handler) updateRedisStatus(ctx context.Context, sessionID, pipelineID, 
 	existingKey := fmt.Sprintf("pipeline:%s", sessionID)
 	if existing, err := h.redis.Get(ctx, existingKey).Bytes(); err == nil {
 		var prev entity.PipelineStatus
-		if json.Unmarshal(existing, &prev) == nil && prev.StartedAtMs > 0 {
-			ps.StartedAtMs = prev.StartedAtMs
+		if json.Unmarshal(existing, &prev) == nil {
+			if prev.StartedAtMs > 0 {
+				ps.StartedAtMs = prev.StartedAtMs
+			}
+			ps.CurrentNode = prev.CurrentNode
+			ps.Nodes = prev.Nodes
 		}
+	}
+	if result != nil {
+		ps.Message = result.Message
+		ps.ClinicalNote = result.ClinicalNote
+		ps.StructuredRecord = result.StructuredRecord
+		ps.ClinicalSuggestions = result.ClinicalSuggestions
+		ps.ValidationReport = result.ValidationReport
 	}
 
 	b, err := json.Marshal(ps)

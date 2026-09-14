@@ -19,6 +19,8 @@ except ImportError:
 
 try:
     from pyannote.audio import Pipeline as _PyAnnotePipeline
+    from pyannote.audio import Inference as _PyAnnoteInference
+    from pyannote.audio import Model as _PyAnnoteModel
     _PYANNOTE_AVAILABLE = True
 except ImportError:
     _PYANNOTE_AVAILABLE = False
@@ -74,6 +76,34 @@ def get_diarization_pipeline():
     except Exception:  # noqa: BLE001 - want to bubble up any auth/download issue with context
         token_hint = f"{token[:4]}..." if token else "None"
         logging.exception("Failed to load pyannote/speaker-diarization with token prefix %s", token_hint)
+        raise
+
+
+@lru_cache(maxsize=1)
+def get_embedding_inference():
+    if not _PYANNOTE_AVAILABLE:
+        raise ImportError(
+            "pyannote.audio is not installed. "
+            "Install it with: pip install pyannote.audio"
+        )
+    if not _HF_HUB_AVAILABLE:
+        raise ImportError("huggingface_hub is not installed.")
+    token = _get_huggingface_token()
+    if not token:
+        raise ValueError(
+            "HUGGINGFACE_API_KEY (or HF_TOKEN/HUGGINGFACEHUB_API_TOKEN) environment variable not set. "
+            "Required for pyannote speaker embeddings."
+        )
+    try:
+        _hf_login(token=token, add_to_git_credential=False)
+        model = _PyAnnoteModel.from_pretrained(
+            "pyannote/embedding",
+            use_auth_token=token,
+        )
+        return _PyAnnoteInference(model, window="whole")
+    except Exception:
+        token_hint = f"{token[:4]}..." if token else "None"
+        logging.exception("Failed to load pyannote/embedding with token prefix %s", token_hint)
         raise
 
 

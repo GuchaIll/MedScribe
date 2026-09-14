@@ -198,8 +198,8 @@ func TestHTTPAuthSessionPatientAndPipelineFlows(t *testing.T) {
 		t.Fatalf("insert patient: %v", err)
 	}
 	_, err = pool.Exec(ctx, `
-		INSERT INTO medical_records (id, patient_id, session_id, template_type, structured_data, clinical_note, is_finalized, version)
-		VALUES ('r1', 'p1', $1, 'soap', '{"labs":[{"test_name":"A1c","value":8.2}]}'::jsonb, '', true, 1)
+		INSERT INTO medical_records (id, patient_id, session_id, record_type, template_used, structured_data, soap_note, is_final, version)
+		VALUES ('r1', 'p1', $1, 'SOAP', 'soap', '{"labs":[{"test_name":"A1c","value":8.2}]}'::jsonb, '', true, 1)
 	`, sessionID)
 	if err != nil {
 		t.Fatalf("insert medical record: %v", err)

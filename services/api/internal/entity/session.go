@@ -33,14 +33,26 @@ type Session struct {
 
 // Document is an uploaded file that has been through the OCR pipeline.
 type Document struct {
-	ID            string
-	SessionID     string
-	OriginalName  string
-	StoragePath   string
-	MimeType      string
-	ExtractedText string
-	ProcessedAt   *time.Time
-	CreatedAt     time.Time
+	ID                       string           `json:"document_id"`
+	SessionID                string           `json:"session_id,omitempty"`
+	OriginalName             string           `json:"original_name"`
+	StoragePath              string           `json:"path,omitempty"`
+	MimeType                 string           `json:"content_type,omitempty"`
+	ExtractedText            string           `json:"extracted_text,omitempty"`
+	Status                   string           `json:"status,omitempty"`
+	DocumentType             string           `json:"document_type,omitempty"`
+	ClassificationConfidence float64          `json:"classification_confidence,omitempty"`
+	OverallConfidence        float64          `json:"overall_confidence,omitempty"`
+	FieldsExtracted          int              `json:"fields_extracted,omitempty"`
+	ConflictsDetected        int              `json:"conflicts_detected,omitempty"`
+	QueueItemsCreated        int              `json:"queue_items_created,omitempty"`
+	ProcessingErrors         []string         `json:"processing_errors,omitempty"`
+	FieldChanges             []map[string]any `json:"field_changes,omitempty"`
+	ConflictDetails          []map[string]any `json:"conflict_details,omitempty"`
+	AgentSummary             string           `json:"agent_summary,omitempty"`
+	StructuredRecord         map[string]any   `json:"structured_record,omitempty"`
+	ProcessedAt              *time.Time       `json:"processed_at,omitempty"`
+	CreatedAt                time.Time        `json:"created_at,omitempty"`
 }
 
 // QueueItem is a proposed modification awaiting physician review.
@@ -56,17 +68,22 @@ type QueueItem struct {
 	ReviewedAt *time.Time
 }
 
-// PipelineStatus is the runtime state of the 18-node clinical pipeline,
+// PipelineStatus is the runtime state of the 16-node clinical pipeline,
 // read from Redis hash pipeline:{sessionID}.
 type PipelineStatus struct {
-	SessionID     string  `json:"session_id"`
-	PipelineID    string  `json:"pipeline_id"`
-	Status        string  `json:"status"` // pending | running | completed | failed
-	CurrentNode   string  `json:"current_node,omitempty"`
-	StartedAtMs   int64   `json:"started_at_ms"`
-	CompletedAtMs *int64  `json:"completed_at_ms,omitempty"`
-	Error         string  `json:"error,omitempty"`
-	Nodes         []NodeProgress `json:"nodes,omitempty"`
+	SessionID           string         `json:"session_id"`
+	PipelineID          string         `json:"pipeline_id"`
+	Status              string         `json:"status"` // pending | running | completed | failed
+	CurrentNode         string         `json:"current_node,omitempty"`
+	StartedAtMs         int64          `json:"started_at_ms"`
+	CompletedAtMs       *int64         `json:"completed_at_ms,omitempty"`
+	Error               string         `json:"error,omitempty"`
+	Message             string         `json:"message,omitempty"`
+	ClinicalNote        string         `json:"clinical_note,omitempty"`
+	StructuredRecord    map[string]any `json:"structured_record,omitempty"`
+	ClinicalSuggestions map[string]any `json:"clinical_suggestions,omitempty"`
+	ValidationReport    map[string]any `json:"validation_report,omitempty"`
+	Nodes               []NodeProgress `json:"nodes,omitempty"`
 }
 
 // NodeProgress is a single node's execution summary within a pipeline run.

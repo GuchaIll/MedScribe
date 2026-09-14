@@ -1,0 +1,16 @@
+# Non-secret runtime configuration shared by the gateway and all workers.
+# Secret values (DATABASE_URL, JWT secret, provider API keys) live in
+# secrets.yaml, not here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: medscribe-config
+  namespace: medscribe
+data:
+  REDIS_URL: "redis://redis:6379/0"
+  KAFKA_BROKERS: "kafka:9092"
+  PYTHON_BACKEND_URL: "http://python-backend:3001"
+  SPEECH_WORKER_URL: "https://your-workspace--medscribe-speech-worker.modal.run"
+  KAFKA_PIPELINE_TOPIC: "pipeline.trigger"
+  LOG_LEVEL: "info"
+  ALLOW_ANONYMOUS_DEMO_ACCESS: "false"

@@ -1,0 +1,53 @@
+# Gateway: HTTP API only (--mode=gateway). No Kafka consumers run here — those
+# are separate Deployments (pipeline-worker, ocr-worker, audio-worker) off the
+# same image.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: medscribe-gateway
+  namespace: medscribe
+  labels:
+    app.kubernetes.io/name: medscribe-gateway
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: medscribe-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: medscribe-gateway
+        app.kubernetes.io/component: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: ghcr.io/medscribe/api:latest
+          args: ["--mode=gateway"]
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: medscribe-config
+            - secretRef:
+                name: medscribe-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "128Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"

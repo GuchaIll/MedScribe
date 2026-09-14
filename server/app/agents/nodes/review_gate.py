@@ -99,8 +99,12 @@ def human_review_gate_node(state: GraphState) -> GraphState:
     - conflict_report for unresolved conflicts
     - state flags for explicit needs_review flag
 
-    If review is needed, sets 'awaiting_human_review' flag to True,
-    which will cause LangGraph to interrupt at this node.
+    If review is needed, sets 'awaiting_human_review' flag to True. Rather than
+    blocking mid-pipeline, this flag is read downstream by persist_results,
+    which stages the proposed record + discrepancies in the Redis review queue
+    for end-of-session physician sign-off (no durable patient-record mutation
+    happens until then). This keeps the encounter flowing — discrepancies are
+    queued, not blocking.
 
     Args:
         state: Current graph state

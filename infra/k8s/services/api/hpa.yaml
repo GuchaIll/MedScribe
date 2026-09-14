@@ -1,0 +1,21 @@
+# Gateway scales on CPU — it is the stateless request router. Worker scaling is
+# better driven by Kafka consumer lag (KEDA); see the worker hpa.yaml files.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: medscribe-gateway
+  namespace: medscribe
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: medscribe-gateway
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

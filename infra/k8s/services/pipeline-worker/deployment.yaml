@@ -1,0 +1,57 @@
+# Pipeline worker: consumes pipeline.trigger and proxies to the Python pipeline.
+# Same image as the gateway, run with --mode=pipeline-worker. Exposes only a
+# health/metrics endpoint (no cluster traffic).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: medscribe-pipeline-worker
+  namespace: medscribe
+  labels:
+    app.kubernetes.io/name: medscribe-pipeline-worker
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: medscribe-pipeline-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: medscribe-pipeline-worker
+        app.kubernetes.io/component: worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: pipeline-worker
+          image: ghcr.io/medscribe/api:latest
+          args: ["--mode=pipeline-worker"]
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: medscribe-config
+            - secretRef:
+                name: medscribe-secrets
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

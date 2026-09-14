@@ -62,12 +62,18 @@ class EmbeddingService:
         self.grounding_threshold = grounding_threshold
         self.persistence_floor = persistence_floor
         self._model = None
+        self._model_load_failed = False
+        self._model_load_error: Optional[Exception] = None
 
     # ── Lazy model loading ──────────────────────────────────────────────────
 
     @property
     def model(self):
         """Lazy-load sentence-transformers model to avoid startup cost."""
+        if self._model_load_failed:
+            raise RuntimeError(
+                f"Embedding model '{self.model_name}' is unavailable"
+            ) from self._model_load_error
         if self._model is None:
             try:
                 from sentence_transformers import SentenceTransformer
@@ -75,7 +81,9 @@ class EmbeddingService:
                 self._model = SentenceTransformer(self.model_name)
                 logger.info(f"Embedding model loaded: dim={self._model.get_sentence_embedding_dimension()}")
             except Exception as e:
-                logger.error(f"Failed to load embedding model '{self.model_name}': {e}")
+                self._model_load_failed = True
+                self._model_load_error = e
+                logger.exception("Failed to load embedding model '%s'", self.model_name)
                 raise RuntimeError(
                     f"Cannot load embedding model '{self.model_name}'. "
                     "Install sentence-transformers: pip install sentence-transformers"
@@ -200,8 +208,6 @@ class EmbeddingService:
 
         # pgvector cosine distance: 1 - cosine_similarity
         # So we ORDER BY distance ASC and filter distance < (1 - threshold)
-        max_distance = 1.0 - threshold
-
         result = self.db.execute(
             sql_text("""
                 SELECT chunk_id, source_type, chunk_text, start_time, end_time,
@@ -443,7 +449,7 @@ class EmbeddingService:
             for key in ("name", "substance", "code", "test", "mrn"):
                 if key in value and value[key]:
                     return str(value[key]).lower().strip()
-            return str(list(value.values())[0]).lower().strip() if value else fact_type
+            return str(next(iter(value.values()))).lower().strip() if value else fact_type
 
         return str(value).lower().strip() if value else fact_type
 

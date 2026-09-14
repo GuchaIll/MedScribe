@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: medscribe-gateway
+  namespace: medscribe
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+spec:
+  rules:
+    - host: medscribe.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: medscribe-gateway
+                port:
+                  name: http

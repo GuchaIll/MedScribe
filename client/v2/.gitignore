@@ -27,6 +27,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-# npm is the package manager (Dockerfile.dev); do not commit a second lockfile
-bun.lockb

@@ -1,11 +1,19 @@
 """
 Persist Results Node — Writes pipeline outputs to the database.
 
-Runs as the final node before END to:
-  1. Create / update a MedicalRecord with the structured record + SOAP note
-  2. Store clinical fact embeddings (with Layer 3 confidence gating)
-  3. Update Session status to COMPLETED
-  4. Create an AuditLog entry for the pipeline run
+Runs as the final node before END. Behaviour depends on the review gate:
+
+  * If the record needs physician review (flags['awaiting_human_review']),
+    NOTHING is written to the durable patient record. The proposed record and
+    its discrepancies are staged in the Redis review queue for end-of-session
+    sign-off (see core/review_queue.py). This is the real "physician approval
+    before persistence" gate.
+
+  * Otherwise (clean / auto-approved run) it persists durably:
+      1. Create / update a MedicalRecord with the structured record + SOAP note
+      2. Store clinical fact embeddings (with Layer 3 confidence gating)
+      3. Update Session status to COMPLETED
+      4. Create an AuditLog entry for the pipeline run
 
 If no DB services are available, the node is a no-op (pipeline still
 produces file-based outputs via package_outputs_node).
@@ -39,6 +47,14 @@ def persist_results_node(state: GraphState, ctx: AgentContext) -> GraphState:
     patient_id = state.get("patient_id", "")
     session_id = state.get("session_id", "")
     doctor_id = state.get("doctor_id", "")
+
+    # ── Review gate ─────────────────────────────────────────────────────────
+    # If the record needs physician review, DO NOT mutate the durable patient
+    # record. Stage the proposed record + discrepancies in Redis instead; the
+    # review-persist worker writes the approved changes only after explicit
+    # sign-off at session end (see core/review_queue.py).
+    if state.get("flags", {}).get("awaiting_human_review"):
+        return _stage_for_review(state, controls, patient_id, session_id, doctor_id)
 
     persisted: Dict[str, bool] = {
         "medical_record": False,
@@ -96,6 +112,71 @@ def persist_results_node(state: GraphState, ctx: AgentContext) -> GraphState:
 
 
 # ─── Internal helpers ───────────────────────────────────────────────────────
+
+def _compute_confidence(validation_report: Optional[Dict[str, Any]]) -> Optional[float]:
+    """Heuristic overall confidence from a validation report (0-100)."""
+    if not validation_report:
+        return None
+    errors = len(validation_report.get("schema_errors", []))
+    missing = len(validation_report.get("missing_fields", []))
+    conflicts = len(validation_report.get("conflicts", []))
+    return max(0, 100 - (10 * errors) - (5 * missing) - (15 * conflicts))
+
+
+def _stage_for_review(
+    state: GraphState,
+    controls: Dict[str, Any],
+    patient_id: str,
+    session_id: str,
+    doctor_id: str,
+) -> GraphState:
+    """
+    Stage a proposed record for end-of-session physician review.
+
+    No durable patient-record mutation happens here — the proposed record and
+    its discrepancies are written to the Redis review queue, and an audit entry
+    records that the run was staged (not persisted).
+    """
+    from app.core.review_queue import build_discrepancies, review_queue_store
+
+    validation_report = state.get("validation_report")
+    conflict_report = state.get("conflict_report")
+
+    discrepancies = build_discrepancies(validation_report, conflict_report)
+
+    review_queue_store.stage_pending_review(
+        session_id,
+        patient_id=patient_id,
+        doctor_id=doctor_id,
+        proposed_record=state.get("structured_record", {}),
+        discrepancies=discrepancies,
+        validation_report=validation_report,
+        conflict_report=conflict_report,
+        clinical_note=state.get("clinical_note"),
+        clinical_suggestions=state.get("clinical_suggestions"),
+        confidence_score=_compute_confidence(validation_report),
+        candidate_facts=state.get("candidate_facts", []),
+        evidence_map=state.get("evidence_map", {}),
+    )
+
+    controls.setdefault("trace_log", []).append({
+        "node": "persist_results",
+        "action": "staged_for_review",
+        "detail": {"discrepancy_count": len(discrepancies), "persisted": False},
+        "timestamp": datetime.now().isoformat(),
+    })
+    state["controls"] = controls
+    state["message"] = (
+        (state.get("message") or "")
+        + f" | Staged for physician review ({len(discrepancies)} discrepancies). "
+        "No durable changes until sign-off."
+    )
+    logger.info(
+        "[PersistResults] Session %s staged for review (%d discrepancies) — no DB write",
+        session_id, len(discrepancies),
+    )
+    return state
+
 
 def _persist_medical_record(
     ctx: AgentContext,

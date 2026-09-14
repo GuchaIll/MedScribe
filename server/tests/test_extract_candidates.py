@@ -45,6 +45,26 @@ def _base_state():
 
 
 class ExtractCandidatesTests(unittest.TestCase):
+
+    def test_select_extraction_queries_prunes_irrelevant_categories(self):
+        """Short symptom transcripts should not fan out to all seven categories."""
+        full_text = (
+            "Patient reports headaches for the past week, worse in the morning, "
+            "with intermittent nausea."
+        )
+        chunks = [
+            {
+                "chunk_id": "chunk_1",
+                "source": "transcript",
+                "source_id": "sess_test",
+                "text": full_text,
+            }
+        ]
+
+        selected = extract._select_extraction_queries(full_text, chunks)
+        categories = {query["category"] for query in selected}
+
+        self.assertEqual(categories, {"chief_complaint_hpi", "conditions_diagnoses"})
     
     def test_extraction_with_chunks(self):
         """Test extraction when chunks are provided"""

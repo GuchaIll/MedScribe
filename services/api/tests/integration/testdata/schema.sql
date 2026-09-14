@@ -49,24 +49,41 @@ CREATE TABLE medical_records (
     id TEXT PRIMARY KEY,
     patient_id TEXT NOT NULL,
     session_id TEXT NOT NULL,
-    template_type TEXT NOT NULL DEFAULT 'soap',
+    record_type TEXT NOT NULL DEFAULT 'SOAP',
+    template_used TEXT NULL,
     structured_data JSONB NOT NULL DEFAULT '{}'::jsonb,
-    clinical_note TEXT NOT NULL DEFAULT '',
-    is_finalized BOOLEAN NOT NULL DEFAULT false,
+    soap_note TEXT NOT NULL DEFAULT '',
+    is_final BOOLEAN NOT NULL DEFAULT false,
     version INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     finalized_at TIMESTAMPTZ NULL
 );
 
-CREATE TABLE session_documents (
+CREATE TYPE ocrstatus AS ENUM ('pending', 'processing', 'completed', 'failed');
+
+CREATE TABLE documents (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
-    original_name TEXT NOT NULL,
-    storage_path TEXT NOT NULL,
-    mime_type TEXT NOT NULL,
+    patient_id TEXT NULL,
+    original_filename TEXT NOT NULL,
+    stored_path TEXT NOT NULL,
+    file_type TEXT NULL,
+    file_size INTEGER NULL,
+    ocr_status ocrstatus NOT NULL DEFAULT 'pending',
+    document_type TEXT NULL,
+    classification_confidence DOUBLE PRECISION NULL,
     extracted_text TEXT NULL,
+    structured_fields JSONB NULL,
+    confidence_map JSONB NULL,
+    conflicts JSONB NULL,
+    overall_confidence DOUBLE PRECISION NULL,
+    page_count INTEGER NULL,
+    field_count INTEGER NULL,
+    conflict_count INTEGER NULL,
+    processing_errors JSONB NULL,
     processed_at TIMESTAMPTZ NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE modification_queue (

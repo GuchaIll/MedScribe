@@ -8,7 +8,7 @@ pipeline progress is written to Redis by the PipelineProgressStore so the
 Go gateway can serve real-time status to the frontend.
 
 Endpoint:
-    POST /internal/pipeline  -- Run the full 18-node LangGraph clinical pipeline.
+    POST /internal/pipeline  -- Run the full 16-node LangGraph clinical pipeline.
 """
 
 import logging
@@ -53,7 +53,7 @@ async def run_pipeline_internal(
     """
     Internal-only pipeline endpoint called by the Go Kafka consumer proxy.
 
-    Runs the full 18-node LangGraph clinical pipeline. Progress is written
+    Runs the full 16-node LangGraph clinical pipeline. Progress is written
     to Redis by PipelineProgressStore so the Go gateway can poll it.
     """
     from app.core.workflow_engine import WorkflowEngine

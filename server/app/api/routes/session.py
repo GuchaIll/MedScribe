@@ -82,12 +82,14 @@ async def run_pipeline(
     service: SessionService = Depends(get_session_service),
 ):
     """
-    Run the full 17-node LangGraph clinical pipeline.
+    Run the full 16-node LangGraph clinical pipeline.
 
     Accepts transcript segments and executes:
-      ingest → clean → normalize → segment → extract → evidence →
-      fill_record → clinical_suggestions → validate → generate_note →
-      persist_results → END.
+      greeting → load_patient_context → preprocess → clean_transcription →
+      extract_candidates → diagnostic_reasoning → retrieve_evidence →
+      fill_structured_record → clinical_suggestions → validate_and_score →
+      [repair | conflict_resolution | human_review_gate] →
+      generate_note → package_outputs → persist_results → END.
 
     Requires a running PostgreSQL + pgvector database.
     """
@@ -152,7 +154,7 @@ async def run_pipeline(
 @router.get("/{session_id}/pipeline/status")
 async def get_pipeline_status(session_id: str):
     """
-    Return the current node-level execution status for the 17-node LangGraph
+    Return the current node-level execution status for the 16-node LangGraph
     pipeline associated with *session_id*.
 
     The frontend polls this endpoint (≈500 ms interval) while the pipeline is

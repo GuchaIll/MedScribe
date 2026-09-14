@@ -23,6 +23,7 @@ MAX_VUS=200
 NUM_SESSIONS=100
 EMAIL=""
 PASSWORD=""
+ARTIFACTS_DIR=""
 
 # ── Parse args ──────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -34,8 +35,9 @@ while [[ $# -gt 0 ]]; do
     --sessions)  NUM_SESSIONS="$2";  shift 2 ;;
     --email)     EMAIL="$2";         shift 2 ;;
     --password)  PASSWORD="$2";      shift 2 ;;
+    --artifacts-dir) ARTIFACTS_DIR="$2"; shift 2 ;;
     -h|--help)
-      echo "Usage: $0 [--url URL] [--qps N] [--duration T] [--vus N] [--sessions N] [--email E] [--password P]"
+      echo "Usage: $0 [--url URL] [--qps N] [--duration T] [--vus N] [--sessions N] [--email E] [--password P] [--artifacts-dir DIR]"
       echo ""
       echo "Options:"
       echo "  --url        Gateway base URL          (default: http://localhost:8080)"
@@ -45,6 +47,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --sessions   Pre-created sessions count  (default: 100)"
       echo "  --email      Test user email             (auto-generated if omitted)"
       echo "  --password   Test user password           (auto-generated if omitted)"
+      echo "  --artifacts-dir  Output directory for raw benchmark artifacts"
       exit 0
       ;;
     *) echo "Unknown option: $1"; exit 1 ;;
@@ -55,6 +58,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K6_SCRIPT="${SCRIPT_DIR}/qps_bench.js"
 SESSIONS_FILE=$(mktemp /tmp/medscribe_sessions_XXXXXX.json)
 trap 'rm -f "$SESSIONS_FILE"' EXIT
+
+SUMMARY_EXPORT_ARGS=()
+TEE_ARGS=()
+if [[ -n "$ARTIFACTS_DIR" ]]; then
+  mkdir -p "$ARTIFACTS_DIR"
+  SUMMARY_FILE="${ARTIFACTS_DIR%/}/k6-summary.json"
+  LOG_FILE="${ARTIFACTS_DIR%/}/console.log"
+  METADATA_FILE="${ARTIFACTS_DIR%/}/run-metadata.txt"
+  SUMMARY_EXPORT_ARGS=(--summary-export "$SUMMARY_FILE")
+  TEE_ARGS=(tee "$LOG_FILE")
+
+  {
+    echo "benchmark=gateway-ingestion-qps"
+    echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "base_url=${BASE_URL}"
+    echo "target_qps=${TARGET_QPS}"
+    echo "duration=${DURATION}"
+    echo "max_vus=${MAX_VUS}"
+    echo "sessions=${NUM_SESSIONS}"
+    echo "host_os=$(uname -s)"
+    echo "host_arch=$(uname -m)"
+  } > "$METADATA_FILE"
+fi
 
 # ── Preflight checks ───────────────────────────────────────────────────────
 echo "=== MedScribe Ingestion QPS Benchmark ==="
@@ -89,6 +115,9 @@ echo "  Target QPS: ${TARGET_QPS}"
 echo "  Duration:   ${DURATION} (+ 10s warm-up)"
 echo "  Max VUs:    ${MAX_VUS}"
 echo "  Sessions:   ${NUM_SESSIONS}"
+if [[ -n "$ARTIFACTS_DIR" ]]; then
+  echo "  Artifacts:  ${ARTIFACTS_DIR}"
+fi
 echo ""
 
 # ── Register + Login ────────────────────────────────────────────────────────
@@ -206,14 +235,26 @@ echo "-- Running k6 QPS benchmark..."
 echo "   Target: ${TARGET_QPS} req/s for ${DURATION} after 10s warm-up"
 echo ""
 
-k6 run \
-  --env BASE_URL="${BASE_URL}" \
-  --env AUTH_TOKEN="${TOKEN}" \
-  --env SESSIONS_FILE="${SESSIONS_FILE}" \
-  --env TARGET_QPS="${TARGET_QPS}" \
-  --env DURATION="${DURATION}" \
-  --env MAX_VUS="${MAX_VUS}" \
-  "$K6_SCRIPT"
+if [[ -n "$ARTIFACTS_DIR" ]]; then
+  k6 run \
+    "${SUMMARY_EXPORT_ARGS[@]}" \
+    --env BASE_URL="${BASE_URL}" \
+    --env AUTH_TOKEN="${TOKEN}" \
+    --env SESSIONS_FILE="${SESSIONS_FILE}" \
+    --env TARGET_QPS="${TARGET_QPS}" \
+    --env DURATION="${DURATION}" \
+    --env MAX_VUS="${MAX_VUS}" \
+    "$K6_SCRIPT" 2>&1 | "${TEE_ARGS[@]}"
+else
+  k6 run \
+    --env BASE_URL="${BASE_URL}" \
+    --env AUTH_TOKEN="${TOKEN}" \
+    --env SESSIONS_FILE="${SESSIONS_FILE}" \
+    --env TARGET_QPS="${TARGET_QPS}" \
+    --env DURATION="${DURATION}" \
+    --env MAX_VUS="${MAX_VUS}" \
+    "$K6_SCRIPT"
+fi
 
 echo ""
 echo "=== Benchmark complete ==="

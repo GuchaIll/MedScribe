@@ -234,7 +234,7 @@ class WorkflowEngine:
         if node_name == "retrieve_evidence":
             count = len(updates.get("evidence_map") or {})
             return f"{count} evidence item{'s' if count != 1 else ''} grounded" if count else None
-        if node_name == "clinical_suggestions":
+        if node_name == "run_clinical_suggestions":
             sugg = updates.get("clinical_suggestions") or {}
             alerts = len(sugg.get("alerts") or [])
             return f"{alerts} drug interaction alert{'s' if alerts != 1 else ''}" if alerts else "no alerts found"

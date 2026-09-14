@@ -5,6 +5,7 @@ package v1
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/medscribe/services/api/internal/usecase"
@@ -13,20 +14,29 @@ import (
 
 // SessionHandler handles /api/session/* routes.
 type SessionHandler struct {
-	sessions usecase.SessionUseCase
-	log      *zap.Logger
+	sessions           usecase.SessionUseCase
+	log                *zap.Logger
+	allowAnonymousDemo bool
 }
 
 // NewSessionHandler creates a new SessionHandler.
-func NewSessionHandler(sessions usecase.SessionUseCase, log *zap.Logger) *SessionHandler {
-	return &SessionHandler{sessions: sessions, log: log}
+func NewSessionHandler(sessions usecase.SessionUseCase, log *zap.Logger, allowAnonymousDemo bool) *SessionHandler {
+	return &SessionHandler{
+		sessions:           sessions,
+		log:                log,
+		allowAnonymousDemo: allowAnonymousDemo,
+	}
 }
 
 func (h *SessionHandler) Start(w http.ResponseWriter, r *http.Request) {
 	userID := claimUserID(r)
 	if userID == "" {
-		writeJSONError(w, http.StatusUnauthorized, "missing user identity")
-		return
+		if h.allowAnonymousDemo {
+			userID = "demo-user"
+		} else {
+			writeJSONError(w, http.StatusUnauthorized, "missing user identity")
+			return
+		}
 	}
 	resp, err := h.sessions.StartSession(r.Context(), userID)
 	if err != nil {
@@ -57,6 +67,68 @@ func (h *SessionHandler) Transcribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *SessionHandler) UploadSpeakerRoleSample(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(32 << 20); err != nil { // 32 MB limit
+		writeJSONError(w, http.StatusBadRequest, "request body too large or not multipart")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "field 'file' is missing")
+		return
+	}
+	defer file.Close()
+
+	resp, err := h.sessions.UploadSpeakerRoleSample(
+		r.Context(),
+		chi.URLParam(r, "sessionID"),
+		usecase.UploadSpeakerRoleSampleRequest{Role: r.FormValue("role")},
+		header,
+		file,
+	)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, resp)
+}
+
+func (h *SessionHandler) UploadAudioSegment(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(64 << 20); err != nil { // 64 MB limit
+		writeJSONError(w, http.StatusBadRequest, "request body too large or not multipart")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "field 'file' is missing")
+		return
+	}
+	defer file.Close()
+
+	resp, err := h.sessions.UploadAudioSegment(
+		r.Context(),
+		chi.URLParam(r, "sessionID"),
+		usecase.UploadAudioSegmentRequest{
+			SegmentID:         r.FormValue("segment_id"),
+			StartedAtMs:       parseInt64FormValue(r.FormValue("started_at_ms")),
+			EndedAtMs:         parseInt64FormValue(r.FormValue("ended_at_ms")),
+			SampleRateHz:      int(parseInt64FormValue(r.FormValue("sample_rate_hz"))),
+			MimeType:          r.FormValue("mime_type"),
+			OptimisticText:    r.FormValue("optimistic_text"),
+			OptimisticSpeaker: r.FormValue("optimistic_speaker"),
+		},
+		header,
+		file,
+	)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, resp)
 }
 
 func (h *SessionHandler) TriggerPipeline(w http.ResponseWriter, r *http.Request) {
@@ -111,6 +183,15 @@ func (h *SessionHandler) GetRecord(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rec)
 }
 
+func (h *SessionHandler) GetLiveTranscript(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.sessions.GetLiveTranscript(r.Context(), chi.URLParam(r, "sessionID"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func (h *SessionHandler) GetDocuments(w http.ResponseWriter, r *http.Request) {
 	docs, err := h.sessions.GetDocuments(r.Context(), chi.URLParam(r, "sessionID"))
 	if err != nil {
@@ -147,4 +228,15 @@ func (h *SessionHandler) UpdateQueueItem(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, item)
+}
+
+func parseInt64FormValue(raw string) int64 {
+	if raw == "" {
+		return 0
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return value
 }

@@ -22,6 +22,7 @@ import SpeechRecognition, {
  * @param {boolean}  opts.enabled     â€” whether capture is active
  * @param {boolean}  opts.muted       â€” soft-mute (ignore transcripts but keep mic open)
  * @param {function} opts.onUtterance â€” called with (finalText: string) when a phrase ends
+ * @param {function} opts.onAudioSegment â€” called with (audio: Float32Array) when VAD closes a phrase
  * @param {function} opts.onError     â€” called with (message: string) on failure
  * @param {number}   [opts.silenceMs=2500] â€” fallback silence timeout when VAD is unavailable
  */
@@ -29,6 +30,7 @@ export default function useVoiceCapture({
   enabled = false,
   muted = false,
   onUtterance,
+  onAudioSegment,
   onError,
   silenceMs = 2500,
 }) {
@@ -44,8 +46,10 @@ export default function useVoiceCapture({
 
   /* â”€â”€ Stable refs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   const onUtteranceRef = useRef(onUtterance);
+  const onAudioSegmentRef = useRef(onAudioSegment);
   const onErrorRef     = useRef(onError);
   useEffect(() => { onUtteranceRef.current = onUtterance; }, [onUtterance]);
+  useEffect(() => { onAudioSegmentRef.current = onAudioSegment; }, [onAudioSegment]);
   useEffect(() => { onErrorRef.current     = onError;     }, [onError]);
 
   const lastFinal    = useRef("");
@@ -92,9 +96,10 @@ export default function useVoiceCapture({
           SpeechRecognition.startListening({ continuous: true, language: "en-US" });
         }
       },
-      onSpeechEnd: (_audio) => {
+      onSpeechEnd: (audio) => {
         if (cancelled) return;
         setUserSpeaking(false);
+        void onAudioSegmentRef.current?.(audio);
         // Short delay so Web Speech API can finalize its last interim result.
         clearTimeout(silenceTimer.current);
         silenceTimer.current = setTimeout(commitPhrase, 350);

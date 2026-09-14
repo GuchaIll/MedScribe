@@ -2,10 +2,12 @@ package usecase
 
 import (
 	"context"
+	"io"
 	"mime/multipart"
+	"strings"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/medscribe/services/api/internal/entity"
+	"github.com/redis/go-redis/v9"
 )
 
 type mockSessionRepo struct {
@@ -213,13 +215,23 @@ func (m *mockRedis) Set(ctx context.Context, key string, value interface{}, expi
 
 type fakeMultipartFile struct{}
 
-func (f fakeMultipartFile) Read(_ []byte) (n int, err error)  { return 0, nil }
-func (f fakeMultipartFile) Close() error                      { return nil }
+func (f fakeMultipartFile) Read(_ []byte) (n int, err error)   { return 0, io.EOF }
+func (f fakeMultipartFile) Close() error                       { return nil }
 func (f fakeMultipartFile) Seek(_ int64, _ int) (int64, error) { return 0, nil }
 func (f fakeMultipartFile) ReadAt(_ []byte, _ int64) (n int, err error) {
-	return 0, nil
+	return 0, io.EOF
 }
 
 func newFileHeader(name string) *multipart.FileHeader {
 	return &multipart.FileHeader{Filename: name}
+}
+
+type stringMultipartFile struct {
+	*strings.Reader
+}
+
+func (f stringMultipartFile) Close() error { return nil }
+
+func newMultipartFile(contents string) multipart.File {
+	return stringMultipartFile{Reader: strings.NewReader(contents)}
 }
