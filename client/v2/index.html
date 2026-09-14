@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- TODO: Set the document title to the name of your application -->
+    <title>Medscribe</title>
+    <meta name="description" content="Medscribe - Medical Transcription and Documentation" />
+    <meta name="author" content="Medscribe Team" />
+
+    <!-- TODO: Update og:title to match your application name -->
+    <meta property="og:title" content="Medscribe" />
+    <meta property="og:description" content="Medscribe - Medical Transcription and Documentation" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@Medscribe" />
+    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <!--
+      VAD — loaded from CDN so the ONNX WASM runtime is fetched directly.
+      Used by src/hooks/useVoiceCapture.ts to gate the Web Speech API.
+      Falls back to plain react-speech-recognition if these fail to load.
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.29/dist/bundle.min.js"></script>
+  </body>
+</html>
