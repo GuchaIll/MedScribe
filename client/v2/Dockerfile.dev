@@ -1,0 +1,25 @@
+# client/v2 — Vite dev server for the Lovable-rebuilt frontend
+#
+# Listens on port 8080 inside the container (vite.config.ts).
+# docker-compose maps host port 3100 -> container 8080.
+#
+# Source and public are volume-mounted at runtime for hot reload.
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+EXPOSE 8080
+
+# Polling required for file-watch inside Docker on macOS/Windows where
+# inotify events don't propagate from a bind-mounted host path.
+ENV CHOKIDAR_USEPOLLING=true
+ENV WATCHPACK_POLLING=true
+
+# --host makes Vite listen on 0.0.0.0 so the container port is reachable.
+CMD ["npm", "run", "dev", "--", "--host"]
