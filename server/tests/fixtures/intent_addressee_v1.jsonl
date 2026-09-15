@@ -1,0 +1,17 @@
+{"id": "amb-001", "speaker": "Clinician", "text": "Have you noticed more shortness of breath climbing stairs?", "expected_addressee": "patient"}
+{"id": "amb-002", "speaker": "Clinician", "text": "What was your last blood pressure reading?", "expected_addressee": "patient", "note": "Plan §5.7 example D: trips every text heuristic, still patient-directed."}
+{"id": "amb-003", "speaker": "Clinician", "text": "Do you remember what your last blood test showed?", "expected_addressee": "patient"}
+{"id": "amb-004", "speaker": "Clinician", "text": "Any allergies to medications?", "expected_addressee": "patient"}
+{"id": "amb-005", "speaker": "Clinician", "text": "Compared to your last visit, how is the pain?", "expected_addressee": "patient", "note": "Compare language addressed to the patient."}
+{"id": "amb-006", "speaker": "Clinician", "text": "Take a deep breath for me.", "expected_addressee": "patient"}
+{"id": "amb-007", "speaker": "Clinician", "text": "Mm-hmm.", "expected_addressee": "patient"}
+{"id": "amb-008", "speaker": "Clinician", "text": "Okay, we're all done for today, take care.", "expected_addressee": "patient", "note": "Goodbye to the patient, not session control."}
+{"id": "amb-009", "speaker": "Clinician", "text": "Lungs clear to auscultation bilaterally, no wheezes.", "expected_addressee": "unknown", "note": "Dictation-like speech; dictation intent is deferred (plan §5.9)."}
+{"id": "amb-010", "speaker": "Clinician", "text": "Plan: increase lisinopril to 20 milligrams daily.", "expected_addressee": "unknown", "note": "Dictation-like speech."}
+{"id": "amb-011", "speaker": "Clinician", "text": "Let me compare that against her old labs.", "expected_addressee": "unknown", "note": "Narrating an action to the patient, not a question to MedScribe."}
+{"id": "amb-012", "speaker": "Clinician", "text": "I want to see how her FEV1 has changed over the last few years.", "expected_addressee": "unknown", "note": "Could be said to a colleague; ambiguous rows must never produce chips."}
+{"id": "amb-013", "speaker": "Clinician", "text": "What was her last potassium again?", "expected_addressee": "copilot", "task_subtype_if_copilot": "factoid", "note": "Third-person side remark."}
+{"id": "amb-014", "speaker": "Clinician", "text": "Hey MedScribe, what's her latest A1c?", "expected_addressee": "copilot", "task_subtype_if_copilot": "factoid", "note": "Spoken address caught by transcript; a wake-word detector should route this via wake_word instead."}
+{"id": "amb-015", "speaker": "Clinician", "text": "Let's get a summary of today's visit written up.", "expected_addressee": "copilot", "task_subtype_if_copilot": "note"}
+{"id": "amb-016", "speaker": "Patient", "text": "It started about three weeks ago.", "expected_addressee": "patient", "note": "Patient speaking to the clinician; never copilot-directed."}
+{"id": "amb-017", "speaker": "Patient", "text": "What was my cholesterol last time?", "expected_addressee": "patient", "note": "Hard negative: lab question from the patient to the clinician."}

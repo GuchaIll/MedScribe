@@ -1,0 +1,9 @@
+benchmark=gateway-ingestion-qps
+date=2026-06-04T07:02:34Z
+base_url=http://localhost:8080
+target_qps=500
+duration=30s
+max_vus=200
+sessions=100
+host_os=Darwin
+host_arch=arm64

@@ -1,0 +1,7 @@
+benchmark=full-pipeline-load
+date=2026-06-04T09:04:57Z
+base_url=http://localhost:8080
+vus=10
+duration=5m
+host_os=Darwin
+host_arch=arm64
