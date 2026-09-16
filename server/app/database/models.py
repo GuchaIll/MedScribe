@@ -16,8 +16,9 @@ from sqlalchemy import (
     Text,
     ForeignKey,
     Enum as SQLEnum,
-    Index
+    Index,
 )
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.orm import relationship
 import enum
 
@@ -444,6 +445,11 @@ class ClinicalEmbedding(Base):
     confidence = Column(Float, nullable=False, default=0.5, comment="Extraction confidence (0.0–1.0)")
     is_final = Column(Boolean, default=False, nullable=False, comment="True after human review or high-confidence persistence")
 
+    # Provenance (Phase 1B, #53)
+    source_chunk_ids = Column(PG_ARRAY(String), nullable=True, comment="Chunk ids that produced this fact")
+    received_at = Column(DateTime, nullable=True, comment="When the system received the source material; null = legacy row")
+    received_at_is_legacy = Column(Boolean, default=False, nullable=False, comment="True when received_at was back-filled from created_at")
+
     # Audit
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -489,9 +495,17 @@ class ChunkEmbedding(Base):
     # Embedding vector
     embedding = Column(Vector(EMBEDDING_DIM) if Vector else Text, nullable=False, comment="Chunk text embedding")
 
+    # Document provenance (Phase 1B, #53); null for transcript chunks
+    document_id = Column(String(100), nullable=True, index=True, comment="Source document id for document chunks")
+    page = Column(Integer, nullable=True, comment="Page number within source document; null for transcript chunks")
+
     # Timing (if from transcript)
     start_time = Column(Float, nullable=True, comment="Segment start time in seconds")
     end_time = Column(Float, nullable=True, comment="Segment end time in seconds")
+
+    # Receipt time (Phase 1B, #53)
+    received_at = Column(DateTime, nullable=True, comment="When the system received the source material; null = legacy row")
+    received_at_is_legacy = Column(Boolean, default=False, nullable=False, comment="True when received_at was back-filled from created_at")
 
     # Audit
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
