@@ -1,0 +1,28 @@
+id: plan
+version: 1
+model_role: planner
+template: |
+  [PLACEHOLDER — plan v1]
+
+  Given the WorkflowState below (uncovered sub-asks, remaining requirements,
+  sources already checked), produce a WorkerPlan: an ordered list of tool
+  calls with dependency edges, evidence_class gates, and a latency budget.
+
+  Workflow state: {{ workflow_state_json }}
+  Tool registry: {{ allowed_tools_json }}
+
+  Respond with valid JSON matching the WorkerPlan schema.
+  Violations of the allowlist or scope keys must not appear in the plan.
+input_schema:
+  type: object
+  required: [workflow_state_json, allowed_tools_json]
+  properties:
+    workflow_state_json:
+      type: string
+    allowed_tools_json:
+      type: string
+output_schema:
+  type: object
+  description: WorkerPlan — see intent/executor_contract.py
+changelog: |
+  v1 (2026-09-16): initial placeholder; typed schema lands with planner (#58)

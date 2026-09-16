@@ -520,3 +520,55 @@ class ChunkEmbedding(Base):
 
     def __repr__(self):
         return f"<ChunkEmbedding(id={self.id}, session={self.session_id}, chunk={self.chunk_id})>"
+
+
+class AgentTraceSpan(Base):
+    """
+    Production agent trace spans.
+
+    One row per TraceSpan emitted by the agent runtime.  PHI rules apply:
+    no utterance text, prompts, completions, or tool payloads in production
+    rows.  Retention policy is defined in §16 Q17 of agent_refactor_plan.md.
+
+    Schema version tracked in the trace_schema_version column; breaking
+    changes must bump TRACE_SCHEMA_VERSION in trace_contracts.py and add a
+    migration.
+    """
+
+    __tablename__ = "agent_trace_spans"
+
+    # Primary key
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # OTel identifiers
+    trace_schema_version = Column(String(20), nullable=False)
+    trace_id = Column(String(64), nullable=False, index=True)
+    span_id = Column(String(32), nullable=False, unique=True)
+    parent_span_id = Column(String(32), nullable=True, index=True)
+
+    # Span metadata
+    kind = Column(String(40), nullable=False)
+    name = Column(String(200), nullable=False, comment="workflow_id, tool_id, or prompt_id")
+    session_id = Column(String(50), nullable=False, index=True)
+
+    # Timing
+    started_at = Column(DateTime, nullable=False)
+    duration_ms = Column(Float, nullable=False)
+
+    # Outcome
+    status = Column(String(20), nullable=False)
+
+    # Kind-specific PHI-free attributes
+    attributes = Column(JSON, nullable=False, default=dict)
+
+    # Audit
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_ats_trace_id", "trace_id"),
+        Index("idx_ats_session_id", "session_id"),
+        Index("idx_ats_started_at", "started_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<AgentTraceSpan(span_id={self.span_id!r}, kind={self.kind!r}, status={self.status!r})>"
