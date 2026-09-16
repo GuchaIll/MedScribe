@@ -1,22 +1,23 @@
 """
 AgentContext — Dependency Injection for LangGraph Nodes.
 
-Follows Anthropic's agent pattern: nodes receive capabilities via context,
-they don't reach out and grab their own dependencies. This makes nodes
-testable, composable, and decoupled from infrastructure.
+Contract 1.2 provisional tuning constants (plan §18.6, §18.9; contract §12.9).
+Tests and executor_contract import these; do not duplicate them elsewhere.
 
-Usage:
-    ctx = AgentContext(
-        patient_service=my_patient_svc,
-        clinical_engine=my_engine,
-        embedding_service=my_embed_svc,
-        llm_factory=lambda: LLMClient(),
-        db_session_factory=SessionLocal,
-    )
-    graph = build_graph(ctx)
+  SUB_ASK_MIN_CONFIDENCE     — minimum class score to accept a sub-ask evidence class
+  MAX_FANOUT_WORKFLOWS       — fan-out dispatch cap; above this, clarify(narrow) fires
+  QUERY_MATERIALIZATION_WAIT_MS — in-flight document wait budget before still-processing card
 """
 
 from __future__ import annotations
+
+# ---------------------------------------------------------------------------
+# Contract 1.2 provisional tuning constants
+# ---------------------------------------------------------------------------
+
+SUB_ASK_MIN_CONFIDENCE: float = 0.75
+MAX_FANOUT_WORKFLOWS: int = 3
+QUERY_MATERIALIZATION_WAIT_MS: int = 20_000
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
