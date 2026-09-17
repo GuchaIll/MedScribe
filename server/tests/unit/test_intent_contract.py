@@ -19,7 +19,10 @@ from app.agents.compile_contracts import (
     PUSH_ALERT_SEVERITIES,
     REVIEW_STATES,
     SAFETY_SEVERITIES,
+    SAFETY_ALERT_TYPES,
+    CandidateFact,
     CompileJob,
+    FactIdentity,
     LaneBOutputs,
     SafetyAlertCard,
     duplicate_active_keys,
@@ -191,7 +194,22 @@ def _tool_result(**overrides):
             }
         ],
         "error": None,
-        "receipt": {},
+        "receipt": {
+            "contract_version": RUNTIME_CONTRACT_VERSION,
+            "invocation_id": "invoke-1",
+            "session_id": "session-1",
+            "tool_id": "retrieve_structured",
+            "tool_version": "v1",
+            "caller": "fixed_executor",
+            "caller_ref": "intent-1",
+            "args_hash": "a" * 64,
+            "ok": True,
+            "error": None,
+            "cache_hit": False,
+            "latency_ms": 12.5,
+            "source_refs": ["lab-123"],
+            "created_at": "2026-08-01T08:00:00Z",
+        },
     }
     result.update(overrides)
     return result
@@ -322,6 +340,16 @@ class TestGateSchema:
             ),
             (lambda: _decision(task=_slots(sub_asks="not-a-list")), "sub_asks must be a list"),
             (lambda: _decision(task=_slots(readings_conflict="yes")), "readings_conflict must be bool"),
+            (lambda: _decision(task=_slots(sub_asks=[{"garbage": True}])), "sub_asks[0] missing fields"),
+            (lambda: _decision(task=_slots(sub_asks=[_sub_ask(class_scores={"made_up": 0.9})])), "unknown class"),
+            (lambda: _decision(task=_slots(sub_asks=[_sub_ask(class_scores={"measurement": True})])), "must be a number"),
+            (
+                lambda: _decision(task=_slots(sub_asks=[
+                    _sub_ask(sub_ask_id="a", depends_on=["b"]),
+                    _sub_ask(sub_ask_id="b", depends_on=["a"]),
+                ])),
+                "acyclic",
+            ),
         ],
     )
     def test_invalid_decision_is_rejected(self, build, fragment):
@@ -358,8 +386,8 @@ class TestInterventionPolicy:
         assert outcome["mode"] == "silent"
         assert "ambient_v1_silent" in outcome["reason_codes"]
 
-    def test_research_chip_needs_copilot_confidence_and_concrete_task(self):
-        def ambient(addressee, task, confidence=0.9, router_ok=True):
+    def test_research_chip_needs_copilot_confidence_and_fixed_dispatch(self):
+        def ambient(addressee, task, confidence=0.9, router_ok=True, dispatch="workflow"):
             return resolve_intervention(
                 "ambient_transcript",
                 addressee,
@@ -367,6 +395,7 @@ class TestInterventionPolicy:
                 addressee_confidence=confidence,
                 router_ok=router_ok,
                 ambient_research_enabled=True,
+                dispatch=dispatch,
             )["mode"]
 
         assert ambient("copilot", "factoid") == "suggest_chip"
@@ -376,6 +405,9 @@ class TestInterventionPolicy:
         assert ambient("copilot", "session_control") == "silent"
         assert ambient("copilot", "unknown") == "silent"
         assert ambient("copilot", "factoid", router_ok=False) == "silent"
+        assert ambient("copilot", "factoid", dispatch="clarify") == "silent"
+        assert ambient("copilot", "factoid", dispatch="planning_agent") == "silent"
+        assert ambient("copilot", "factoid", dispatch="fanout") == "suggest_chip"
 
     @pytest.mark.parametrize("channel", sorted(EXPLICIT_CHANNELS))
     @pytest.mark.parametrize("task", _TASK_OPTIONS)
@@ -485,6 +517,12 @@ class TestExecutorContract:
         assert "retrieve_source_chunks" in FIXED_TOOL_CHAINS["trajectory"]
         assert "retrieve_source_chunks" in FIXED_TOOL_CHAINS["compare"]
 
+    def test_trajectory_and_compare_chains_include_deterministic_compute(self):
+        assert FIXED_TOOL_CHAINS["trajectory"][-2:] == ("normalize_units", "compute_trend")
+        assert FIXED_TOOL_CHAINS["compare"][-3:] == (
+            "normalize_units", "compute_delta", "compare_findings",
+        )
+
     def test_dispatch_values_are_frozen(self):
         assert set(DISPATCH_VALUES) == {"silent", "clarify", "workflow", "fanout", "planning_agent"}
 
@@ -513,8 +551,9 @@ class TestExecutorContract:
             "plan_id", "tasks", "synthesis_goal", "needs_scope"
         }
         assert set(PlanTask.__annotations__) == {
-            "task_id", "tool_id", "args", "depends_on", "sub_ask_id"
+            "task_id", "kind", "ref", "args", "depends_on"
         }
+        assert "workflow" in str(PlanTask.__annotations__["kind"])
 
     def test_workflow_state_shape(self):
         assert set(WorkflowState.__annotations__) == {
@@ -615,6 +654,14 @@ class TestDispatchAssist:
         sa = _sub_ask(class_scores={"measurement": 0.92})
         assert dispatch_assist("wake_word", self._slots_with([sa])) == "workflow"
         assert dispatch_assist("wake_word", self._slots_with([])) == "clarify"
+
+    def test_multiple_accepted_classes_on_one_sub_ask_fan_out(self):
+        sa = _sub_ask(class_scores={"measurement": 0.92, "document": 0.86})
+        assert dispatch_assist("explicit_ui", self._slots_with([sa])) == "fanout"
+
+    def test_unknown_channel_is_rejected(self):
+        with pytest.raises(ValueError):
+            dispatch_assist("sms", self._slots_with([_sub_ask()]))
 
 
 @pytest.mark.unit
@@ -717,7 +764,10 @@ class TestSharedToolRegistry:
         assert "locator" in fields
 
     def test_claim_and_derivation_shapes(self):
-        assert set(Claim.__annotations__) == {"claim_id", "text", "citation_ids", "derivation"}
+        assert set(Claim.__annotations__) == {
+            "claim_id", "text", "claim_type", "value", "unit", "date",
+            "negated", "citation_ids", "derivation", "evidence_state",
+        }
         assert set(Derivation.__annotations__) == {"operation", "input_citation_ids", "receipt_id"}
 
     def test_not_covered_error_is_defined(self):
@@ -727,7 +777,11 @@ class TestSharedToolRegistry:
         assert validate_tool_result(_tool_result()) == []
 
     def test_no_source_miss_is_valid(self):
-        miss = _tool_result(tool_id="retrieve_structured", ok=False, data={}, citations=[], error=NO_SOURCE_ERROR)
+        receipt = {**_tool_result()["receipt"], "ok": False, "error": NO_SOURCE_ERROR}
+        miss = _tool_result(
+            tool_id="retrieve_structured", ok=False, data={}, citations=[],
+            error=NO_SOURCE_ERROR, receipt=receipt,
+        )
         assert validate_tool_result(miss) == []
 
     @pytest.mark.parametrize(
@@ -735,10 +789,13 @@ class TestSharedToolRegistry:
         [
             ({"citations": []}, "ungrounded"),
             ({"tool_id": "compare_findings", "citations": []}, "ungrounded"),
-            ({"citations": [{"source_kind": "web", "source_id": "x"}]}, "known source_kind"),
-            ({"citations": [{"source_kind": "prior_labs", "source_id": ""}]}, "source_id"),
+            ({"citations": [{**_tool_result()["citations"][0], "source_kind": "web"}]}, "source_kind"),
+            ({"citations": [{**_tool_result()["citations"][0], "source_id": ""}]}, "source_id"),
+            ({"citations": [{"source_kind": "prior_labs", "source_id": "x"}]}, "missing fields"),
             ({"ok": False, "error": None}, "error string"),
             ({"tool_id": "retrieve_everything"}, "unknown tool"),
+            ({"data": []}, "data must be an object"),
+            ({"receipt": None}, "receipt must be an object"),
         ],
     )
     def test_invalid_tool_result_is_rejected(self, overrides, fragment):
@@ -747,7 +804,8 @@ class TestSharedToolRegistry:
 
     def test_safety_tools_may_return_without_citations(self):
         for tool_id in ("check_med_conflicts", "check_dosage", "check_metric_alerts"):
-            result = _tool_result(tool_id=tool_id, citations=[], data={"alerts": []})
+            receipt = {**_tool_result()["receipt"], "tool_id": tool_id}
+            result = _tool_result(tool_id=tool_id, citations=[], data={"alerts": []}, receipt=receipt)
             assert validate_tool_result(result) == [], tool_id
 
     def test_receipt_carries_args_hash_not_raw_args(self):
@@ -772,7 +830,7 @@ class TestLaneBContracts:
         assert make_fact_key("lab", "RBC", "2024-11-02") == "lab:rbc:2024-11-02"
         assert make_fact_key("vital", "Blood Pressure") == "vital:blood_pressure"
 
-    @pytest.mark.parametrize("args", [("allergy", ""), ("", "amoxicillin"), ("allergy", "  ")])
+    @pytest.mark.parametrize("args", [(), ("allergy",), ("allergy", ""), ("", "amoxicillin"), ("allergy", "  ")])
     def test_make_fact_key_rejects_empty_parts(self, args):
         with pytest.raises(ValueError):
             make_fact_key(*args)
@@ -825,8 +883,20 @@ class TestLaneBContracts:
             renders_alert_card("severe")
 
     def test_lane_b_outputs_always_carry_push_safety(self):
-        assert "safety_alerts" in LaneBOutputs.__annotations__
-        assert {"severity", "fact_keys", "evidence", "session_id"} <= set(SafetyAlertCard.__annotations__)
+        assert set(FactIdentity.__annotations__) == {
+            "fact_id", "fact_key", "status", "superseded_by",
+            "source_segment_ids", "source_doc_ids", "confidence",
+        }
+        assert {"type", "value", "provenance"} <= set(CandidateFact.__annotations__)
+        assert set(LaneBOutputs.__annotations__) == {
+            "draft_version", "candidate_facts", "structured_record",
+            "validation_report", "safety_alerts", "review_package",
+        }
+        assert set(SafetyAlertCard.__annotations__) == {
+            "alert_id", "session_id", "alert_type", "severity", "message",
+            "fact_keys", "evidence",
+        }
+        assert SAFETY_ALERT_TYPES == ("allergy", "interaction", "contraindication")
         assert set(CompileJob.__annotations__) == {
             "session_id",
             "base_draft_version",
@@ -868,22 +938,30 @@ class TestTaskGoldenSet:
         # silent is only for ambient_transcript; all golden rows are explicit
         assert {"clarify", "workflow", "fanout", "planning_agent"} <= dispatches
 
-    def test_workflow_rows_have_one_accepted_sub_ask(self):
+    def test_workflow_rows_have_one_accepted_workflow(self):
         rows = _load("intent_task_v2.jsonl")
         for r in rows:
             if r["expected_dispatch"] == "workflow":
-                accepted = [
-                    sa for sa in r["expected_sub_asks"]
-                    if any(v >= SUB_ASK_MIN_CONFIDENCE for v in sa["class_scores"].values())
-                ]
-                assert len(accepted) == 1, r["id"]
+                accepted_workflows = sum(
+                    score >= SUB_ASK_MIN_CONFIDENCE
+                    for sa in r["expected_sub_asks"]
+                    for evidence_class, score in sa["class_scores"].items()
+                    if evidence_class != "no_workflow"
+                )
+                assert accepted_workflows == 1, r["id"]
 
-    def test_fanout_rows_have_multiple_independent_sub_asks(self):
+    def test_fanout_rows_have_multiple_independent_workflows(self):
         rows = _load("intent_task_v2.jsonl")
         for r in rows:
             if r["expected_dispatch"] == "fanout":
-                independent = [sa for sa in r["expected_sub_asks"] if not sa["depends_on"]]
-                assert len(independent) >= 2, r["id"]
+                assert all(not sa["depends_on"] for sa in r["expected_sub_asks"]), r["id"]
+                accepted_workflows = sum(
+                    score >= SUB_ASK_MIN_CONFIDENCE
+                    for sa in r["expected_sub_asks"]
+                    for evidence_class, score in sa["class_scores"].items()
+                    if evidence_class != "no_workflow"
+                )
+                assert 1 < accepted_workflows <= MAX_FANOUT_WORKFLOWS, r["id"]
 
     def test_planning_agent_rows_have_depends_on_or_no_workflow(self):
         rows = _load("intent_task_v2.jsonl")
@@ -935,8 +1013,9 @@ class TestAddresseeGoldenSet:
         outcome = resolve_intervention(
             "ambient_transcript", row["expected_addressee"], task, ambient_research_enabled=True
         )
-        expect_chip = row["expected_addressee"] == "copilot" and task not in ("unknown", "session_control")
-        assert (outcome["mode"] == "suggest_chip") == expect_chip
+        # The addressee golden set has no Stage B dispatch. Without a fixed
+        # workflow/fan-out result, ambient research remains silent.
+        assert outcome["mode"] == "silent"
 
 
 @pytest.mark.unit

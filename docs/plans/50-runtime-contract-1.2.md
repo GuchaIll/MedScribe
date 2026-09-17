@@ -50,17 +50,21 @@ Out of scope:
 ## Test criteria
 
 Commands:
-- `pytest server/tests/unit/test_intent_contract.py -v` passes
+- [x] `pytest server/tests/unit/test_intent_contract.py -q --override-ini=addopts=` — 577 passed
+- [x] `python3 -m compileall -q server/app/agents` — passed
 
 Acceptance (from issue):
-- [ ] `tool_contracts.py`: `retrieve_structured`, `get_patient_profile`, `retrieve_source_chunks`; safety tools split; compute tools added; `ToolCaller` uses `planning_agent`
-- [ ] `tool_contracts.py`: `Citation.received_at`, `evidence_state`, `locator`; `Claim.derivation`
-- [ ] `intent/schemas.py`: `SubAsk`, `TaskSlots.sub_asks`, `readings_conflict`, `evidence_class`
-- [ ] `executor_contract.py`: modes `fixed | planning_agent`; `dispatch_assist()` table; `WorkerPlan` / `PlanTask` with `needs_scope`; `ClarifyRequest`; `WorkflowState`; provisional constants imported from config
-- [ ] `RUNTIME_CONTRACT_VERSION == "1.2"`, contract tests pass
+- [x] `tool_contracts.py`: `retrieve_structured`, `get_patient_profile`, `retrieve_source_chunks`; safety tools split; compute tools added; `ToolCaller` uses `planning_agent`
+- [x] `tool_contracts.py`: `Citation.received_at`, `evidence_state`, source-specific locator validation; structured `Claim.derivation`
+- [x] `intent/schemas.py`: `SubAsk`, `TaskSlots.sub_asks`, `readings_conflict`, `evidence_class`, nested validation
+- [x] `executor_contract.py`: modes `fixed | planning_agent`; workflow-count dispatch table; `WorkerPlan` / `PlanTask` with `needs_scope`; `ClarifyRequest`; `WorkflowState`; provisional constants imported from config
+- [x] `RUNTIME_CONTRACT_VERSION == "1.2"`, contract tests pass
 
 ## Risks and open questions
 
 - `intent_addressee_v1.jsonl` is referenced by existing tests but did not exist on main; this PR creates it (65-row blocker)
 - Provisional numbers in config.py; test imports them from there via executor_contract re-exports
 - §12 of the contract doc becomes normative when this PR lands; keep the §12 section but label it "migration notes / history"
+- Review follow-up: dispatch counts accepted workflows (not just sub-asks); nested
+  intent/tool-result validators reject malformed payloads; planner, grounding,
+  and Lane B typed models match the source contract before runtime consumers land.

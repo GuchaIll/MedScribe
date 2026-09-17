@@ -314,8 +314,8 @@ All tasks start with a fixed workflow. The planning agent is dispatched by
 | `compile`         | —                                                                                                       | enqueues a Lane B `CompileJob`                             |
 | `session_control` | —                                                                                                       | confirm, then Lane C                                       |
 | `unknown`         | —                                                                                                       | clarifying question                                        |
-| `trajectory`      | `get_patient_profile` → `retrieve_structured` → `retrieve_source_chunks`                               | deterministic escalation; `planning_agent` via handoff     |
-| `compare`         | `get_patient_profile` → `retrieve_structured` → `retrieve_source_chunks` → `compare_findings`          | same; `planning_agent` via handoff if needed               |
+| `trajectory`      | `get_patient_profile` → `retrieve_structured` → `retrieve_source_chunks` → `normalize_units` → `compute_trend` | deterministic escalation; `planning_agent` via handoff |
+| `compare`         | `get_patient_profile` → `retrieve_structured` → `retrieve_source_chunks` → `normalize_units` → `compute_delta` → `compare_findings` | same; `planning_agent` via handoff if needed |
 
 ### 5.2 Dispatch and planning agent
 
@@ -409,9 +409,9 @@ Compute tools (`normalize_units`, `compute_trend`, `compute_delta`) are LLM-free
 
 `ToolResult`: `tool_id`, `ok`, `data`, `citations`, `error`, `receipt`.
 
-`Citation` (1.2): `source_kind`, `source_id`, `snippet`, `observed_at`, `received_at` (when the source entered the system), `evidence_state` (`received` | `materialized` | `validated` | `authorized`), `locator` (document span: `{page, char_start, char_end}` or transcript span: `{segment_id, t_start, t_end}`), `score`.
+`Citation` (1.2): `source_kind`, `source_id`, `snippet`, `observed_at`, required `received_at` (when the source entered the system), required `evidence_state` (`received` | `materialized` | `validated` | `authorized`), `locator` (document span: `{page, char_start, char_end}` or transcript span: `{segment_id, t_start, t_end}`), `score`. Document and transcript citations require their respective locator shape.
 
-`Claim` (1.2): `claim_id`, `text`, `citation_ids`, `derivation`. `Derivation`: `operation` (compute tool id), `input_citation_ids`, `receipt_id`. The strict grounding validator re-checks a derived value against its compute receipt before allowing it to render (§5.3).
+`Claim` (1.2): `claim_id`, `text`, `claim_type`, `value`, `unit`, `date`, `negated`, `citation_ids`, `derivation`, `evidence_state`. `Derivation`: `operation` (compute tool id), `input_citation_ids`, `receipt_id`. The strict grounding validator re-checks a derived value against its compute receipt before allowing it to render (§5.3).
 
 `validate_tool_result()` enforces the presence floor (§5.3 checks correctness):
 

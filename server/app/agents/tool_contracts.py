@@ -22,7 +22,7 @@ Changes from 1.1:
 
 from __future__ import annotations
 
-from typing import Any, Dict, FrozenSet, List, Literal, Optional, Tuple, TypedDict, get_args
+from typing import Any, Dict, FrozenSet, List, Literal, Optional, Tuple, TypedDict, Union, get_args
 
 RUNTIME_CONTRACT_VERSION = "1.2"
 
@@ -202,14 +202,21 @@ AGENT_ALLOWLIST = PLANNER_ALLOWLIST
 # Citation and claim types
 # ---------------------------------------------------------------------------
 
-class CitationLocator(TypedDict):
-    """Pinpoints a span inside a source document or transcript segment (§12.7)."""
-    page: Optional[int]            # 1-indexed; None for transcript
-    char_start: Optional[int]
-    char_end: Optional[int]
-    segment_id: Optional[str]      # transcript segment; None for documents
-    t_start: Optional[float]       # seconds within segment
-    t_end: Optional[float]
+class DocumentCitationLocator(TypedDict):
+    """A span in a document, with character offsets on a 1-indexed page."""
+    page: int
+    char_start: int
+    char_end: int
+
+
+class TranscriptCitationLocator(TypedDict):
+    """A span within one transcript segment, expressed in seconds."""
+    segment_id: str
+    t_start: float
+    t_end: float
+
+
+CitationLocator = Union[DocumentCitationLocator, TranscriptCitationLocator]
 
 
 class Citation(TypedDict):
@@ -217,8 +224,8 @@ class Citation(TypedDict):
     source_id: str                  # doc id, lab row key, visit id, transcript segment id
     snippet: Optional[str]
     observed_at: Optional[str]      # ISO date of the underlying fact (lab draw, visit)
-    received_at: Optional[str]      # ISO-8601 when the source entered the system (§12.2)
-    evidence_state: Optional[EvidenceState]  # lifecycle state at query time (§12.2)
+    received_at: str                # ISO-8601 when the source entered the system (§12.2)
+    evidence_state: EvidenceState   # lifecycle state at query time (§12.2)
     locator: Optional[CitationLocator]       # span within the source (§12.7)
     score: Optional[float]
 
@@ -238,8 +245,14 @@ class Claim(TypedDict):
     """Structured claim emitted by synthesis; validated before rendering (§12.7)."""
     claim_id: str
     text: str
+    claim_type: str
+    value: Optional[Any]
+    unit: Optional[str]
+    date: Optional[str]
+    negated: Optional[bool]
     citation_ids: List[str]         # source_ids from the citation list
     derivation: Optional[Derivation]  # present only for computed values
+    evidence_state: EvidenceState    # assigned from validated evidence before rendering
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +326,8 @@ def validate_tool_result(result: Dict[str, Any]) -> List[str]:
     ok=True without citations. Citation *correctness* is the grounding
     validator's job (grounding/validator.py in Phase 1).
     """
+    if not isinstance(result, dict):
+        return ["tool result must be an object"]
     missing = set(ToolResult.__annotations__) - set(result)
     if missing:
         return [f"missing fields: {sorted(missing)}"]
@@ -324,23 +339,109 @@ def validate_tool_result(result: Dict[str, Any]) -> List[str]:
     errors: List[str] = []
     if not isinstance(result["ok"], bool):
         errors.append("ok must be bool")
+    if not isinstance(result["data"], dict):
+        errors.append("data must be an object")
 
     citations = result["citations"]
     if not isinstance(citations, list):
         errors.append("citations must be a list")
         citations = []
-    for citation in citations:
-        if (
-            not isinstance(citation, dict)
-            or citation.get("source_kind") not in SOURCE_KINDS
-            or not citation.get("source_id")
-        ):
-            errors.append("each citation needs a known source_kind and a source_id")
-            break
+    for index, citation in enumerate(citations):
+        errors.extend(_citation_errors(citation, index))
 
     if result["ok"] is True and spec["requires_citations"] and not citations:
         errors.append(f"{result['tool_id']} returned ok without citations (ungrounded)")
     if result["ok"] is False and not isinstance(result["error"], str):
         errors.append("failed result must carry an error string")
+    if result["ok"] is True and result["error"] is not None:
+        errors.append("successful result must have error=null")
 
+    errors.extend(_receipt_errors(result["receipt"], result["tool_id"], result["ok"], result["error"]))
+
+    return errors
+
+
+def _citation_errors(citation: Any, index: int) -> List[str]:
+    prefix = f"citations[{index}]"
+    if not isinstance(citation, dict):
+        return [f"{prefix} must be an object"]
+    missing = set(Citation.__annotations__) - set(citation)
+    if missing:
+        return [f"{prefix} missing fields: {sorted(missing)}"]
+
+    errors: List[str] = []
+    if citation["source_kind"] not in SOURCE_KINDS:
+        errors.append(f"{prefix}.source_kind must be in contract")
+    if not isinstance(citation["source_id"], str) or not citation["source_id"]:
+        errors.append(f"{prefix}.source_id must be a non-empty string")
+    for name in ("snippet", "observed_at"):
+        if citation[name] is not None and not isinstance(citation[name], str):
+            errors.append(f"{prefix}.{name} must be a string or null")
+    if not isinstance(citation["received_at"], str) or not citation["received_at"]:
+        errors.append(f"{prefix}.received_at must be a non-empty ISO-8601 string")
+    if citation["evidence_state"] not in EVIDENCE_STATES:
+        errors.append(f"{prefix}.evidence_state must be in contract")
+    if citation["score"] is not None and (
+        not isinstance(citation["score"], (int, float)) or isinstance(citation["score"], bool)
+    ):
+        errors.append(f"{prefix}.score must be a number or null")
+    errors.extend(_locator_errors(citation["locator"], citation["source_kind"], prefix))
+    return errors
+
+
+def _locator_errors(locator: Any, source_kind: Any, prefix: str) -> List[str]:
+    document_kinds = {"uploaded_doc", "prior_docs"}
+    if source_kind == "session_transcript":
+        if not isinstance(locator, dict) or set(locator) != set(TranscriptCitationLocator.__annotations__):
+            return [f"{prefix}.locator must be a transcript locator"]
+        if not isinstance(locator["segment_id"], str) or not locator["segment_id"]:
+            return [f"{prefix}.locator.segment_id must be a non-empty string"]
+        if not all(
+            isinstance(locator[name], (int, float)) and not isinstance(locator[name], bool)
+            for name in ("t_start", "t_end")
+        ) or locator["t_start"] > locator["t_end"]:
+            return [f"{prefix}.locator transcript offsets must be ordered numbers"]
+        return []
+    if source_kind in document_kinds:
+        if not isinstance(locator, dict) or set(locator) != set(DocumentCitationLocator.__annotations__):
+            return [f"{prefix}.locator must be a document locator"]
+        if not all(isinstance(locator[name], int) and not isinstance(locator[name], bool) for name in ("page", "char_start", "char_end")):
+            return [f"{prefix}.locator document offsets must be integers"]
+        if locator["page"] < 1 or locator["char_start"] < 0 or locator["char_start"] > locator["char_end"]:
+            return [f"{prefix}.locator document offsets must be ordered and non-negative"]
+        return []
+    return [] if locator is None else [f"{prefix}.locator is only valid for document or transcript sources"]
+
+
+def _receipt_errors(receipt: Any, result_tool_id: Any, result_ok: Any, result_error: Any) -> List[str]:
+    if not isinstance(receipt, dict):
+        return ["receipt must be an object"]
+    missing = set(ToolInvocationReceipt.__annotations__) - set(receipt)
+    if missing:
+        return [f"receipt missing fields: {sorted(missing)}"]
+
+    errors: List[str] = []
+    if receipt["contract_version"] != RUNTIME_CONTRACT_VERSION:
+        errors.append("receipt.contract_version must match runtime contract")
+    for name in ("invocation_id", "session_id", "tool_version", "caller_ref", "args_hash", "created_at"):
+        if not isinstance(receipt[name], str) or not receipt[name]:
+            errors.append(f"receipt.{name} must be a non-empty string")
+    if receipt["tool_id"] != result_tool_id:
+        errors.append("receipt.tool_id must match result.tool_id")
+    if receipt["caller"] not in TOOL_CALLERS:
+        errors.append("receipt.caller must be in contract")
+    if not isinstance(receipt["ok"], bool):
+        errors.append("receipt.ok must be bool")
+    elif receipt["ok"] != result_ok:
+        errors.append("receipt.ok must match result.ok")
+    if receipt["error"] is not None and not isinstance(receipt["error"], str):
+        errors.append("receipt.error must be a string or null")
+    elif receipt["error"] != result_error:
+        errors.append("receipt.error must match result.error")
+    if not isinstance(receipt["cache_hit"], bool):
+        errors.append("receipt.cache_hit must be bool")
+    if not isinstance(receipt["latency_ms"], (int, float)) or isinstance(receipt["latency_ms"], bool) or receipt["latency_ms"] < 0:
+        errors.append("receipt.latency_ms must be a non-negative number")
+    if not isinstance(receipt["source_refs"], list) or not all(isinstance(ref, str) for ref in receipt["source_refs"]):
+        errors.append("receipt.source_refs must be a list of strings")
     return errors

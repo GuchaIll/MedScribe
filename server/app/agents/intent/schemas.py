@@ -222,6 +222,92 @@ def _is_unit_interval(value: Any) -> bool:
     return is_number and 0.0 <= value <= 1.0
 
 
+def _sub_ask_errors(sub_asks: List[Any]) -> List[str]:
+    """Validate the declarative Stage B payload before dispatch consumes it."""
+    errors: List[str] = []
+    required = set(SubAsk.__annotations__)
+    ids: List[str] = []
+
+    for index, sub_ask in enumerate(sub_asks):
+        prefix = f"sub_asks[{index}]"
+        if not isinstance(sub_ask, dict):
+            errors.append(f"{prefix} must be an object")
+            continue
+        missing = required - set(sub_ask)
+        if missing:
+            errors.append(f"{prefix} missing fields: {sorted(missing)}")
+            continue
+        unknown = set(sub_ask) - required
+        if unknown:
+            errors.append(f"{prefix} has unknown fields: {sorted(unknown)}")
+
+        sub_ask_id = sub_ask["sub_ask_id"]
+        if not isinstance(sub_ask_id, str) or not sub_ask_id:
+            errors.append(f"{prefix}.sub_ask_id must be a non-empty string")
+        else:
+            ids.append(sub_ask_id)
+        if not isinstance(sub_ask["span"], str) or not sub_ask["span"]:
+            errors.append(f"{prefix}.span must be a non-empty string")
+        if not _is_str_list(sub_ask["entity_hints"]):
+            errors.append(f"{prefix}.entity_hints must be a list of strings")
+        if not _is_str_list(sub_ask["domain_hints"]):
+            errors.append(f"{prefix}.domain_hints must be a list of strings")
+        if sub_ask["time_range"] is not None and not isinstance(sub_ask["time_range"], str):
+            errors.append(f"{prefix}.time_range must be a string or null")
+        if not _is_str_list(sub_ask["depends_on"]):
+            errors.append(f"{prefix}.depends_on must be a list of strings")
+
+        class_scores = sub_ask["class_scores"]
+        if not isinstance(class_scores, dict):
+            errors.append(f"{prefix}.class_scores must be an object")
+        else:
+            for evidence_class, score in class_scores.items():
+                if evidence_class not in EVIDENCE_CLASSES:
+                    errors.append(f"{prefix}.class_scores has unknown class {evidence_class!r}")
+                if not _is_unit_interval(score):
+                    errors.append(
+                        f"{prefix}.class_scores[{evidence_class!r}] must be a number in [0, 1]"
+                    )
+
+    if len(ids) != len(set(ids)):
+        errors.append("sub_ask_id values must be unique")
+
+    known_ids = set(ids)
+    dependencies: Dict[str, List[str]] = {}
+    for sub_ask in sub_asks:
+        if not isinstance(sub_ask, dict):
+            continue
+        sub_ask_id = sub_ask.get("sub_ask_id")
+        depends_on = sub_ask.get("depends_on")
+        if not isinstance(sub_ask_id, str) or not _is_str_list(depends_on):
+            continue
+        dependencies[sub_ask_id] = depends_on
+        for dependency in depends_on:
+            if dependency not in known_ids:
+                errors.append(f"sub_ask {sub_ask_id!r} depends on unknown sub_ask {dependency!r}")
+
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(sub_ask_id: str) -> bool:
+        if sub_ask_id in visiting:
+            return True
+        if sub_ask_id in visited:
+            return False
+        visiting.add(sub_ask_id)
+        cyclic = any(
+            dependency in dependencies and visit(dependency)
+            for dependency in dependencies.get(sub_ask_id, [])
+        )
+        visiting.remove(sub_ask_id)
+        visited.add(sub_ask_id)
+        return cyclic
+
+    if any(visit(sub_ask_id) for sub_ask_id in dependencies):
+        errors.append("sub_ask dependencies must be acyclic")
+    return errors
+
+
 def validate_intent_decision(decision: Dict[str, Any]) -> List[str]:
     """Return contract violations for a candidate IntentDecision (empty list = valid).
 
@@ -296,6 +382,8 @@ def _slot_errors(task: Dict[str, Any]) -> List[str]:
 
     if not isinstance(task.get("sub_asks"), list):
         errors.append("sub_asks must be a list")
+    else:
+        errors.extend(_sub_ask_errors(task["sub_asks"]))
     if not isinstance(task.get("readings_conflict"), bool):
         errors.append("readings_conflict must be bool")
 

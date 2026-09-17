@@ -13,6 +13,8 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, FrozenSet, List, Literal, Optional, Tuple, TypedDict, get_args
 
+from app.agents.tool_contracts import Citation
+
 
 # ---------------------------------------------------------------------------
 # Fact lifecycle (§7.1)
@@ -39,6 +41,9 @@ DELTA_ACTION: Dict[str, str] = {
 
 SafetySeverity = Literal["critical", "major", "moderate", "info"]
 SAFETY_SEVERITIES: Tuple[str, ...] = get_args(SafetySeverity)
+
+SafetyAlertType = Literal["allergy", "interaction", "contraindication"]
+SAFETY_ALERT_TYPES: Tuple[str, ...] = get_args(SafetyAlertType)
 
 # Severities that produce a visible push alert card in the UI.
 PUSH_ALERT_SEVERITIES: FrozenSet[str] = frozenset({"critical", "major"})
@@ -77,6 +82,8 @@ def make_fact_key(*parts: str) -> str:
     Raises:
         ValueError: if any part is empty or whitespace-only.
     """
+    if len(parts) < 2:
+        raise ValueError("fact_key requires a canonical type and an entity")
     for part in parts:
         if not part or not part.strip():
             raise ValueError(f"fact_key part must not be empty: {parts!r}")
@@ -134,6 +141,23 @@ def duplicate_active_keys(facts: List[Dict[str, Any]]) -> List[str]:
 # Compile job envelope (§7.3)
 # ---------------------------------------------------------------------------
 
+class FactIdentity(TypedDict):
+    """Stable identity and lifecycle metadata carried by a candidate fact."""
+    fact_id: str
+    fact_key: str
+    status: FactStatus
+    superseded_by: Optional[str]
+    source_segment_ids: List[str]
+    source_doc_ids: List[str]
+    confidence: Optional[float]
+
+
+class CandidateFact(FactIdentity):
+    """Compile candidate with its extracted clinical payload and provenance."""
+    type: str
+    value: Any
+    provenance: Dict[str, Any]
+
 class CompileJob(TypedDict):
     """Input envelope passed to the Lane B compile pipeline."""
     session_id: str
@@ -149,19 +173,20 @@ class CompileJob(TypedDict):
 
 class SafetyAlertCard(TypedDict):
     """Push alert surfaced to the clinician when severity >= critical/major."""
-    severity: SafetySeverity
-    fact_keys: List[str]
-    evidence: List[str]              # citation ids supporting the alert
+    alert_id: str
     session_id: str
-    rule_id: Optional[str]          # which safety rule triggered (None = model-driven)
-    acknowledged: bool
+    alert_type: SafetyAlertType
+    severity: SafetySeverity
+    message: str
+    fact_keys: List[str]
+    evidence: List[Citation]
 
 
 class LaneBOutputs(TypedDict):
     """Combined outputs from a Lane B compile run."""
-    session_id: str
     draft_version: str
-    facts: List[Dict[str, Any]]
+    candidate_facts: List[CandidateFact]
+    structured_record: Dict[str, Any]
+    validation_report: Dict[str, Any]
     safety_alerts: List[SafetyAlertCard]
-    review_state: ReviewState
-    compile_job_id: str
+    review_package: Optional[Dict[str, Any]]

@@ -38,6 +38,7 @@ def resolve_intervention(
     ambient_research_enabled: bool = False,
     router_ok: bool = True,
     tts_enabled: bool = False,
+    dispatch: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Return the intervention decision for a gate output.
 
@@ -49,6 +50,8 @@ def resolve_intervention(
         ambient_research_enabled: whether the background research chip is on.
         router_ok: False when the routing model failed or timed out.
         tts_enabled: whether voice output is available in this session.
+        dispatch: Stage B execution decision. Ambient research chips are only
+            eligible for fixed `workflow` or `fanout` dispatches.
 
     Returns:
         Dict with keys: mode, intervene, urgency, speak_policy, reason_codes.
@@ -68,7 +71,10 @@ def resolve_intervention(
         )
 
     if channel == "ambient_transcript":
-        return _ambient(addressee, task, addressee_confidence, ambient_research_enabled, router_ok)
+        return _ambient(
+            addressee, task, addressee_confidence, ambient_research_enabled,
+            router_ok, dispatch,
+        )
     return _explicit(channel, task, router_ok, tts_enabled)
 
 
@@ -78,12 +84,14 @@ def _ambient(
     confidence: float,
     research_enabled: bool,
     router_ok: bool,
+    dispatch: Optional[str],
 ) -> Dict[str, Any]:
     chip_eligible = (
         research_enabled
         and addressee == "copilot"
         and task is not None
         and task not in ("unknown", "session_control")
+        and dispatch in ("workflow", "fanout")
         and confidence >= AMBIENT_CHIP_MIN_CONFIDENCE
         and router_ok
     )

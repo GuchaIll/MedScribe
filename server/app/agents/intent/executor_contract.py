@@ -35,7 +35,8 @@ from app.agents.config import (
     QUERY_MATERIALIZATION_WAIT_MS,
     SUB_ASK_MIN_CONFIDENCE,
 )
-from app.agents.tool_contracts import TOOL_SPECS, validate_model_tool_args
+from app.agents.intent.schemas import CHANNELS, EVIDENCE_CLASSES, SubAsk
+from app.agents.tool_contracts import TOOL_SPECS, ToolResult, validate_model_tool_args
 
 # Re-export so callers that previously imported from here still work.
 __all__ = [
@@ -76,8 +77,14 @@ FIXED_TOOL_CHAINS: Dict[str, Tuple[str, ...]] = {
     "compile": (),
     "session_control": (),
     "unknown": (),
-    "trajectory": ("get_patient_profile", "retrieve_structured", "retrieve_source_chunks"),
-    "compare": ("get_patient_profile", "retrieve_structured", "retrieve_source_chunks", "compare_findings"),
+    "trajectory": (
+        "get_patient_profile", "retrieve_structured", "retrieve_source_chunks",
+        "normalize_units", "compute_trend",
+    ),
+    "compare": (
+        "get_patient_profile", "retrieve_structured", "retrieve_source_chunks",
+        "normalize_units", "compute_delta", "compare_findings",
+    ),
 }
 
 # Provisional planner budget (carried from §5.2 / 1.1 contract).
@@ -123,7 +130,7 @@ class ScopeChoice(TypedDict):
     rank: int
     label: str
     supporting_fact_ids: List[str]   # empty = generic (not personalized)
-    expands_to: List[str]            # sub_ask_ids this choice resolves to
+    expands_to: List[str]            # evidence classes / domains this choice resolves to
 
 
 class ClarifyRequest(TypedDict):
@@ -138,12 +145,12 @@ class ClarifyRequest(TypedDict):
 # ---------------------------------------------------------------------------
 
 class PlanTask(TypedDict):
-    """A single step in a WorkerPlan, addressing one sub-ask."""
+    """A single fixed-workflow or allowlisted-tool step in a WorkerPlan."""
     task_id: str
-    tool_id: str
+    kind: Literal["workflow", "tool"]
+    ref: str                         # workflow id / fixed job, or planner-allowlisted tool id
     args: Dict[str, Any]            # hints only; scope keys are rejected by the registry
     depends_on: List[str]           # task_ids this step waits for
-    sub_ask_id: str                 # which SubAsk this covers
 
 
 class WorkerPlan(TypedDict):
@@ -157,7 +164,7 @@ class WorkerPlan(TypedDict):
     plan_id: str
     tasks: List[PlanTask]
     synthesis_goal: str
-    needs_scope: Optional[str]      # human-readable reason; non-null blocks execution
+    needs_scope: bool                # when true, tasks is empty and the scope gate runs
 
 
 # ---------------------------------------------------------------------------
@@ -174,13 +181,13 @@ class WorkflowState(TypedDict):
     workflow_id: str
     reason: str                             # why the fixed workflow ran out
     goal: str                               # immutable
-    scope: Dict[str, Any]                   # immutable
+    scope: List[SubAsk]                     # immutable Stage B scope; no re-interpretation
     required_evidence: List[str]
     remaining_requirements: List[str]
-    acquired: List[Dict[str, Any]]          # evidence items with citations
-    sources_checked: List[Dict[str, str]]   # [{"tool_id": ..., "args_hash": ...}]
+    acquired: List[ToolResult]              # evidence already acquired, with citations
+    sources_checked: List[str]              # encoded tool_id + args_hash entries already run
     as_of_receipt: str                      # ISO-8601 cutoff shared with the request
-    latency_remaining_ms: float
+    latency_remaining_ms: int
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +248,12 @@ def _accepted_classes(sub_ask: Dict[str, Any]) -> List[str]:
     """Return evidence classes whose calibrated score meets SUB_ASK_MIN_CONFIDENCE."""
     return [
         cls for cls, score in sub_ask.get("class_scores", {}).items()
-        if isinstance(score, (int, float)) and score >= SUB_ASK_MIN_CONFIDENCE
+        if (
+            cls in EVIDENCE_CLASSES
+            and isinstance(score, (int, float))
+            and not isinstance(score, bool)
+            and score >= SUB_ASK_MIN_CONFIDENCE
+        )
     ]
 
 
@@ -255,6 +267,9 @@ def dispatch_assist(channel: str, slots: Dict[str, Any]) -> DispatchValue:
     Returns:
         A DispatchValue indicating how the executor should proceed.
     """
+    if channel not in CHANNELS:
+        raise ValueError(f"channel={channel!r} not in CHANNELS")
+
     # Rule 1: ambient transcript is always silent in v1.
     if channel == "ambient_transcript":
         return "silent"
@@ -277,18 +292,21 @@ def dispatch_assist(channel: str, slots: Dict[str, Any]) -> DispatchValue:
     if any_depends_on or any_no_workflow:
         return "planning_agent"
 
-    # Rules 4–6: count how many independent sub-asks have an accepted class.
-    independent = [
-        sa for sa, classes in zip(sub_asks, accepted_by_ask)
-        if classes and not sa.get("depends_on") and "no_workflow" not in classes
-    ]
+    # Rules 4–6: count workflows, not sub-asks.  A broad single sub-ask with
+    # two accepted classes must fan out to both fixed workflows.
+    workflow_count = sum(
+        1
+        for classes in accepted_by_ask
+        for cls in classes
+        if cls != "no_workflow"
+    )
 
     # Rule 4: exactly one independent sub-ask -> single workflow.
-    if len(independent) == 1:
+    if workflow_count == 1:
         return "workflow"
 
     # Rule 5: within fan-out cap -> parallel fixed workflows.
-    if 1 < len(independent) <= MAX_FANOUT_WORKFLOWS:
+    if 1 < workflow_count <= MAX_FANOUT_WORKFLOWS:
         return "fanout"
 
     # Rule 6: over cap -> narrow clarify.
