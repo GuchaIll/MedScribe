@@ -91,6 +91,11 @@ class PromptRegistry:
                     raise RegistryError(
                         f"{yaml_path}: id field {data['id']!r} does not match directory name {prompt_id!r}"
                     )
+                if data["version"] != version_num:
+                    raise RegistryError(
+                        f"{yaml_path}: version field {data['version']!r} does not match "
+                        f"filename version {version_num}"
+                    )
                 template: str = data["template"]
                 sha = hashlib.sha256(template.encode()).hexdigest()
                 entry = PromptEntry(

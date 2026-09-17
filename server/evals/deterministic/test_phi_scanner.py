@@ -10,8 +10,8 @@ This test suite:
    the scanner is capable of catching leaks.
 3. Asserts clean spans pass without raising.
 
-When TRACE_CAPTURE_PAYLOADS=true spans may contain payloads (dev/eval only);
-the scanner exempts that env var by design — these tests run without it.
+When TRACE_CAPTURE_PAYLOADS=true spans may contain payloads (dev/eval only).
+The scanner itself remains active; runtime integrations decide whether to invoke it.
 
 In CI: pytest server/evals/deterministic/test_phi_scanner.py
 Expected: all tests pass (including the ones that prove the scanner fires).

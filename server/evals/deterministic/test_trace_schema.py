@@ -15,12 +15,14 @@ Passing criteria:
 import json
 import tempfile
 from pathlib import Path
+from typing import Any, Dict
 
 import pytest
 
 # Absolute imports work when pytest is run from server/ directory.
 from app.agents.trace_contracts import (
     TRACE_SCHEMA_VERSION,
+    KIND_REQUIRED_ATTRS,
     SpanKind,
     SpanStatus,
     TraceSpan,
@@ -37,6 +39,7 @@ from app.agents.tracing.spans import new_span_id, new_trace_id, utcnow_iso
 
 
 def _valid_span(**overrides) -> dict:
+    """Build a valid route span; used by tests that specifically test route attrs."""
     base = dict(
         trace_id=new_trace_id(),
         span_id=new_span_id(),
@@ -46,11 +49,43 @@ def _valid_span(**overrides) -> dict:
         started_at=utcnow_iso(),
         duration_ms=12.5,
         status="ok",
-        attributes={"dispatch": "workflow", "reason_codes": []},
+        attributes=_attrs_for_kind("route"),
         parent_span_id=None,
     )
     base.update(overrides)
     return make_span(**base)
+
+
+def _attrs_for_kind(kind: str) -> Dict[str, Any]:
+    """Return minimal stub attributes that satisfy KIND_REQUIRED_ATTRS for kind."""
+    required = KIND_REQUIRED_ATTRS.get(kind, frozenset())
+    stub: Dict[str, Any] = {}
+    for key in required:
+        # Use type-appropriate stubs so the dict passes isinstance checks downstream.
+        if key in {"input_tokens", "output_tokens", "cached_tokens", "repair_retry",
+                   "task_count", "expanded_tool_calls", "gates_reattached",
+                   "required_count", "remaining_count", "sources_checked_count",
+                   "relevant_doc_count", "level", "claims_total", "passed", "refused"}:
+            stub[key] = 0
+        elif key in {"cost_usd", "temperature", "duration_ms", "latency_ms",
+                     "latency_remaining_ms", "wait_ms"}:
+            stub[key] = 0.0
+        elif key in {"ok", "cache_hit", "stub", "gate_required", "readings_conflict",
+                     "schema_valid", "stop"}:
+            stub[key] = False
+        elif key in {"sub_asks", "violations", "source_refs", "reason_codes"}:
+            stub[key] = []
+        elif key in {"thresholds", "scope_choice_ids_with_fact_counts",
+                     "hits_by_entity", "failed_by_check",
+                     "context_tokens_by_segment"}:
+            stub[key] = {}
+        elif key == "dispatch":
+            stub[key] = "silent"
+        elif key == "outcome":
+            stub[key] = "ready"
+        else:
+            stub[key] = ""
+    return stub
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +250,50 @@ def test_jsonl_sink_appends_across_open_close():
 
 @pytest.mark.parametrize("kind", sorted(EXPECTED_SPAN_KINDS))
 def test_stub_run_every_kind_passes_validation(kind):
-    span = _valid_span(kind=kind)
+    span = make_span(
+        trace_id=new_trace_id(),
+        span_id=new_span_id(),
+        kind=kind,
+        name=f"stub_{kind}",
+        session_id="sess-test-001",
+        started_at=utcnow_iso(),
+        duration_ms=1.0,
+        status="ok",
+        attributes=_attrs_for_kind(kind),
+    )
     errors = validate_span(span)
     assert errors == [], f"kind={kind!r} failed validation: {errors}"
+
+
+def test_validate_span_catches_missing_kind_attrs():
+    span = make_span(
+        trace_id=new_trace_id(),
+        span_id=new_span_id(),
+        kind="route",
+        name="dispatch_assist",
+        session_id="sess-test-001",
+        started_at=utcnow_iso(),
+        duration_ms=1.0,
+        status="ok",
+        attributes={},  # empty — missing route required attrs
+    )
+    errors = validate_span(span)
+    assert any("missing required attributes" in e for e in errors)
+
+
+def test_validate_span_catches_non_mapping_attributes():
+    span = make_span(
+        trace_id=new_trace_id(),
+        span_id=new_span_id(),
+        kind="route",
+        name="dispatch_assist",
+        session_id="sess-test-001",
+        started_at=utcnow_iso(),
+        duration_ms=1.0,
+        status="ok",
+        attributes={"dispatch": "silent"},  # valid — satisfies some but not all
+    )
+    # Deliberately overwrite attributes with a non-dict after construction
+    span["attributes"] = "not-a-dict"
+    errors = validate_span(span)
+    assert any("mapping" in e for e in errors)
