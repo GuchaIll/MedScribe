@@ -542,14 +542,15 @@ class AgentTraceSpan(Base):
 
     # OTel identifiers
     trace_schema_version = Column(String(20), nullable=False)
-    trace_id = Column(String(64), nullable=False, index=True)
+    # index=True omitted; named indexes in __table_args__ below match the migration
+    trace_id = Column(String(64), nullable=False)
     span_id = Column(String(32), nullable=False, unique=True)
-    parent_span_id = Column(String(32), nullable=True, index=True)
+    parent_span_id = Column(String(32), nullable=True)
 
     # Span metadata
     kind = Column(String(40), nullable=False)
     name = Column(String(200), nullable=False, comment="workflow_id, tool_id, or prompt_id")
-    session_id = Column(String(50), nullable=False, index=True)
+    session_id = Column(String(50), nullable=False)
 
     # Timing
     started_at = Column(DateTime, nullable=False)
@@ -568,6 +569,7 @@ class AgentTraceSpan(Base):
         Index("idx_ats_trace_id", "trace_id"),
         Index("idx_ats_session_id", "session_id"),
         Index("idx_ats_started_at", "started_at"),
+        Index("idx_ats_parent_span_id", "parent_span_id"),
     )
 
     def __repr__(self) -> str:

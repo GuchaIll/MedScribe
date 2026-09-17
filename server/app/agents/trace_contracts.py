@@ -104,7 +104,12 @@ def make_span(
 
 
 def validate_span(span: Dict[str, Any]) -> List[str]:
-    """Return a list of validation errors; empty means valid."""
+    """
+    Return a list of validation errors; empty means valid.
+
+    Checks base required keys, then kind-specific required attribute keys
+    so malformed traces are caught before they reach the sink.
+    """
     errors: List[str] = []
     missing = TraceSpan.REQUIRED_KEYS - span.keys()
     if missing:
@@ -114,10 +119,25 @@ def validate_span(span: Dict[str, Any]) -> List[str]:
             f"trace_schema_version mismatch: "
             f"got {span['trace_schema_version']!r}, expected {TRACE_SCHEMA_VERSION!r}"
         )
-    if "kind" in span and span["kind"] not in _VALID_KINDS:
-        errors.append(f"unknown kind: {span['kind']!r}")
+    kind = span.get("kind")
+    if kind is not None and kind not in _VALID_KINDS:
+        errors.append(f"unknown kind: {kind!r}")
     if "status" in span and span["status"] not in _VALID_STATUSES:
         errors.append(f"unknown status: {span['status']!r}")
+
+    # Kind-specific attribute validation — only when base keys are present
+    # so callers get the most actionable errors first.
+    if not missing and kind in _VALID_KINDS:
+        attrs = span.get("attributes")
+        if not isinstance(attrs, dict):
+            errors.append("attributes must be a mapping")
+        else:
+            required_attr_keys = KIND_REQUIRED_ATTRS.get(kind, frozenset())
+            missing_attrs = required_attr_keys - attrs.keys()
+            if missing_attrs:
+                errors.append(
+                    f"kind={kind!r} missing required attributes: {sorted(missing_attrs)}"
+                )
     return errors
 
 
@@ -227,6 +247,24 @@ GROUNDING_CHECK_REQUIRED_ATTRS = frozenset(
         "passed",
         "failed_by_check",
         "refused",
+    }
+)
+
+# Mapping used by validate_span() for kind-specific attribute checks.
+# Kinds not listed (request, workflow) have no required attributes beyond the base.
+KIND_REQUIRED_ATTRS: Dict[str, frozenset] = {
+    kind: LLM_REQUIRED_ATTRS
+    for kind in LLM_SPAN_KINDS
+}
+KIND_REQUIRED_ATTRS.update(
+    {
+        "route": ROUTE_REQUIRED_ATTRS,
+        "plan_validate": PLAN_VALIDATE_REQUIRED_ATTRS,
+        "handoff": HANDOFF_REQUIRED_ATTRS,
+        "materialization_wait": MATERIALIZATION_WAIT_REQUIRED_ATTRS,
+        "tool_call": TOOL_CALL_REQUIRED_ATTRS,
+        "cascade_level": CASCADE_LEVEL_REQUIRED_ATTRS,
+        "grounding_check": GROUNDING_CHECK_REQUIRED_ATTRS,
     }
 )
 
