@@ -36,8 +36,15 @@ NodeStatus = Literal["pending", "running", "completed", "failed", "skipped"]
 # graph's streamed node events in workflow_engine.py, so they MUST be
 # identical). The frontend catalogue (client/v2/src/lib/pipelineNodes.ts)
 # mirrors this list in turn.
-PIPELINE_NODE_DEFS: List[tuple] = [
-    ("greeting",               "Initialising session",             "ingestion",   "Loading session context and greeting"),
+# Feature flag: matches graph.py._GREETING_ENABLED.
+# Set ENABLE_GREETING_NODE=1 to include the greeting stage in progress tracking.
+_GREETING_ENABLED = bool(os.getenv("ENABLE_GREETING_NODE"))
+
+_GREETING_STAGE: List[tuple] = [
+    ("greeting", "Initialising session", "ingestion", "Loading session context and greeting"),
+]
+
+_PIPELINE_CORE_NODES: List[tuple] = [
     ("load_patient_context",   "Loading patient history",          "ingestion",   "Retrieving prior visits, medications, allergies from database"),
     ("preprocess",             "Preprocessing transcript",         "ingestion",   "Ingesting, normalising speaker labels, and chunking into clinical segments"),
     ("clean_transcription",    "Cleaning transcription",           "ingestion",   "Removing disfluencies, hesitations, and noise"),
@@ -54,6 +61,10 @@ PIPELINE_NODE_DEFS: List[tuple] = [
     ("package_outputs",        "Packaging outputs",                "output",      "Assembling final artifacts for storage and display"),
     ("persist_results",        "Persisting to database",           "output",      "Writing record, embeddings, and audit trace to PostgreSQL"),
 ]
+
+PIPELINE_NODE_DEFS: List[tuple] = (
+    (_GREETING_STAGE if _GREETING_ENABLED else []) + _PIPELINE_CORE_NODES
+)
 
 # Quick lookup: name → index in the ordered list
 _NODE_ORDER: Dict[str, int] = {name: i for i, (name, *_) in enumerate(PIPELINE_NODE_DEFS)}

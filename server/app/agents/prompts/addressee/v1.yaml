@@ -1,0 +1,39 @@
+id: addressee
+version: 1
+model_role: router
+template: |
+  [PLACEHOLDER — addressee v1]
+
+  Classify who the following utterance is directed at: the patient, the
+  copilot (MedScribe), or neither (ambient/dictation).
+
+  Utterance: {{ utterance }}
+  Prior context: {{ prior_context_summary }}
+
+  Respond with valid JSON: {"addressee": "patient"|"copilot"|"ambient",
+  "confidence": 0.0–1.0, "reason_code": "<short code>"}.
+
+  Do not barge into the visit when confidence is below threshold.
+  Trap rows that look like copilot asks but are directed at the patient
+  (e.g. "What was your last blood pressure?") must classify as "patient".
+input_schema:
+  type: object
+  required: [utterance, prior_context_summary]
+  properties:
+    utterance:
+      type: string
+    prior_context_summary:
+      type: string
+output_schema:
+  type: object
+  required: [addressee, confidence, reason_code]
+  properties:
+    addressee:
+      type: string
+      enum: [patient, copilot, ambient]
+    confidence:
+      type: number
+    reason_code:
+      type: string
+changelog: |
+  v1 (2026-09-16): initial placeholder; Phase 5 precision gate applies (#63)

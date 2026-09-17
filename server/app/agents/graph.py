@@ -41,9 +41,17 @@ Flow:
   generate_note → package_outputs → persist_results → END
 """
 
+import os
+
 from langgraph.graph import StateGraph, END
 
 from .state import GraphState
+
+# Feature flag: set ENABLE_GREETING_NODE=1 to retain the greeting node.
+# Default is off — new deployments skip the housekeeping node.
+# The client/v2 pipelineNodes.ts catalogue still lists "greeting"; a
+# client-side flag is tracked as an open question in plan #52.
+_GREETING_ENABLED = bool(os.getenv("ENABLE_GREETING_NODE"))
 from .config import AgentContext, make_node, create_default_context
 
 # Node imports — each is a pure function (state[, ctx]) -> state
@@ -126,7 +134,6 @@ def build_graph(
 
     # ── Register nodes (context injected via make_node) ─────────────────────
     nodes = {
-        "greeting":               greeting_node,
         "load_patient_context":   load_patient_context_node,
         "preprocess":             preprocess_node,
         "clean_transcription":    clean_transcription_node,
@@ -147,9 +154,15 @@ def build_graph(
     for name, fn in nodes.items():
         graph.add_node(name, make_node(fn, ctx))
 
+    # ── Greeting node (feature-flagged; ENABLE_GREETING_NODE=1 to enable) ───
+    if _GREETING_ENABLED:
+        graph.add_node("greeting", make_node(greeting_node, ctx))
+        graph.set_entry_point("greeting")
+        graph.add_edge("greeting", "load_patient_context")
+    else:
+        graph.set_entry_point("load_patient_context")
+
     # ── Edges: linear pipeline with DB bookends ─────────────────────────────
-    graph.set_entry_point("greeting")
-    graph.add_edge("greeting", "load_patient_context")
     graph.add_edge("load_patient_context", "preprocess")
     graph.add_edge("preprocess", "clean_transcription")
     graph.add_edge("clean_transcription", "extract_candidates")
