@@ -1,0 +1,31 @@
+id: synthesis
+version: 1
+model_role: synthesis
+template: |
+  [PLACEHOLDER — synthesis v1]
+
+  Synthesize a concise, grounded answer to the physician's question using
+  only the evidence below.  Every claim must cite at least one source id.
+  Do not speculate beyond the provided evidence.
+
+  Question: {{ question }}
+  Evidence: {{ evidence_json }}
+  Session context: {{ session_context_summary }}
+
+  Respond with valid JSON matching the SynthesisOutput schema
+  (claims list + citations).
+input_schema:
+  type: object
+  required: [question, evidence_json, session_context_summary]
+  properties:
+    question:
+      type: string
+    evidence_json:
+      type: string
+    session_context_summary:
+      type: string
+output_schema:
+  type: object
+  description: SynthesisOutput — structured claims with citation ids
+changelog: |
+  v1 (2026-09-16): initial placeholder; typed schema lands with assist graph (#56)

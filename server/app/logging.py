@@ -9,8 +9,39 @@ Usage:
 
 import logging
 import logging.config
+import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .agents.tracing.sinks import JsonlTraceSink
+
+_trace_sink: Optional["JsonlTraceSink"] = None
+
+
+def get_trace_sink() -> Optional["JsonlTraceSink"]:
+    """Return the process-wide JsonlTraceSink, or None if not configured."""
+    return _trace_sink
+
+
+def configure_trace_sink(path: Optional[str] = None) -> None:
+    """
+    Wire a JsonlTraceSink for the current process.
+
+    Called from app startup after configure_logging().  path defaults to
+    TRACE_JSONL_PATH env var, then logs/traces.jsonl.  No-op when
+    TRACE_CAPTURE_PAYLOADS is not set and path is not explicitly given, so
+    production processes that want only Postgres traces do not create a file.
+    """
+    global _trace_sink
+    resolved = path or os.environ.get("TRACE_JSONL_PATH")
+    if resolved is None:
+        capture = os.environ.get("TRACE_CAPTURE_PAYLOADS", "").lower()
+        if capture not in {"1", "true", "yes"}:
+            return
+        resolved = "logs/traces.jsonl"
+    from .agents.tracing.sinks import JsonlTraceSink
+    _trace_sink = JsonlTraceSink(resolved)
 
 
 def configure_logging(
