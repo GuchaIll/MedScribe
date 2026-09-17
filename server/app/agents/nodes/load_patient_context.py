@@ -1,129 +1,119 @@
 """
-Load Patient Context Node — Hydrates pipeline state from database.
+Load Patient Context Node — hydrates pipeline state from the session snapshot.
 
-Runs immediately after greeting_node to populate patient_record_fields
-with the patient's prior clinical history from:
-  1. Patient demographics (patients table)
-  2. Most recent finalized MedicalRecord (medical_records table)
-  3. Prior clinical facts via embedding search (clinical_embeddings table)
+Since #51 this node no longer reads the database itself. It asks the session
+snapshot (plan §6.1), which loads once per session and is reused by the assist
+path, the safety tools, and ``get_patient_profile``. The second compile in a
+session is a cache hit, not a second full reload.
 
-If no DB services are available, the pipeline degrades gracefully
-and proceeds with empty patient context (same as before this node existed).
+Outputs (unchanged for downstream nodes):
+  - state["patient_record_fields"]["demographics"]
+  - state["patient_record_fields"]["prior_record"]
+  - state["patient_record_fields"]["prior_facts"]   (grouped by fact type)
+  - state["patient_record_fields"]["visit_count"]
+plus ``snapshot_version`` and ``snapshot_source`` so later stages can cite the
+snapshot they read.
+
+If no patient state exists, the pipeline degrades exactly as before: empty
+context, no exception.
 """
 
 from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ..config import AgentContext
+from ..session.snapshot import PatientContextSnapshot, SnapshotStore, load_snapshot
 from ..state import GraphState
 
 logger = logging.getLogger(__name__)
 
 
-def load_patient_context_node(state: GraphState, ctx: AgentContext) -> GraphState:
-    """
-    Hydrate patient_record_fields from the database.
-
-    Populates:
-      - state["patient_record_fields"]["demographics"]: name, dob, age, sex, mrn
-      - state["patient_record_fields"]["prior_record"]: last finalized structured_data
-      - state["patient_record_fields"]["prior_facts"]: grouped clinical facts from embeddings
-      - state["patient_record_fields"]["visit_count"]: total prior visits
-
-    Falls back to empty context if DB is unavailable.
-    """
+def load_patient_context_node(
+    state: GraphState,
+    ctx: Optional[AgentContext] = None,
+    *,
+    store: Optional[SnapshotStore] = None,
+) -> GraphState:
+    """Hydrate patient_record_fields from the session snapshot."""
     state = {**state}
     patient_id = state.get("patient_id", "")
+    session_id = state.get("session_id") or ""
     controls = state.get("controls", {"attempts": {}, "budget": {}, "trace_log": []})
 
-    patient_context: Dict[str, Any] = {
-        "demographics": {},
-        "prior_record": {},
-        "prior_facts": {},
-        "visit_count": 0,
-        "loaded_from_db": False,
-    }
-
     if not patient_id:
-        logger.warning("[LoadPatientContext] No patient_id in state — skipping DB lookup")
-        state["patient_record_fields"] = patient_context
+        logger.warning("[LoadPatientContext] no patient_id in state — skipping snapshot load")
+        state["patient_record_fields"] = _fields(None)
         _trace(controls, "skipped", "no_patient_id")
         return state
 
-    # ── Fast path: skip DB lookups for new patients ─────────────────────────
+    if not session_id:
+        # Without a session key there is nothing to cache under; load per compile
+        # and say so, rather than silently sharing one patient's snapshot.
+        logger.warning(
+            "[LoadPatientContext] no session_id in state — loading without the session cache"
+        )
+
     if state.get("is_new_patient"):
-        logger.info("[LoadPatientContext] is_new_patient=True — skipping DB lookups")
-        state["patient_record_fields"] = patient_context
+        logger.info("[LoadPatientContext] is_new_patient=True — skipping snapshot load")
+        state["patient_record_fields"] = _fields(None)
         _trace(controls, "skipped", "new_patient")
         return state
 
-    # ── 1. Load demographics from Patient table ─────────────────────────────
-    if ctx.patient_repo is not None:
-        try:
-            patient = ctx.patient_repo.get_by_id(patient_id)
-            if patient:
-                patient_context["demographics"] = {
-                    "full_name": patient.full_name,
-                    "dob": patient.dob.isoformat() if patient.dob else None,
-                    "age": patient.age,
-                    "sex": patient.sex,
-                    "mrn": patient.mrn,
-                }
-                logger.info(f"[LoadPatientContext] Loaded demographics for patient {patient_id}")
-            else:
-                logger.info(f"[LoadPatientContext] Patient {patient_id} not found in DB (new patient)")
-        except Exception as e:
-            logger.error(f"[LoadPatientContext] Failed to load demographics: {e}")
+    try:
+        snapshot = load_snapshot(
+            session_id or f"compile:{patient_id}",
+            patient_id,
+            ctx,
+            tenant_id=state.get("tenant_id"),
+            store=store,
+        )
+    except Exception as exc:
+        logger.exception("[LoadPatientContext] snapshot load failed for patient_id=%s", patient_id)
+        state["patient_record_fields"] = _fields(None)
+        _trace(controls, "error", f"snapshot_load_failed: {type(exc).__name__}")
+        return state
 
-    # ── 2. Load most recent finalized MedicalRecord ─────────────────────────
-    if ctx.record_repo is not None:
-        try:
-            records = ctx.record_repo.get_for_patient(patient_id, limit=1)
-            if records:
-                latest = records[0]
-                patient_context["prior_record"] = latest.structured_data or {}
-                # Use COUNT query instead of fetching all records
-                patient_context["visit_count"] = ctx.record_repo.count_for_patient(patient_id)
-                logger.info(
-                    f"[LoadPatientContext] Loaded prior record (version={latest.version}, "
-                    f"is_final={latest.is_final})"
-                )
-        except Exception as e:
-            logger.error(f"[LoadPatientContext] Failed to load prior records: {e}")
-
-    # ── 3. Load clinical fact embeddings (grouped by type) ──────────────────
-    if ctx.embedding_service is not None:
-        try:
-            grouped_facts = ctx.embedding_service.get_all_patient_facts(
-                patient_id=patient_id,
-                only_final=True,
-            )
-            patient_context["prior_facts"] = grouped_facts
-            total_facts = sum(len(v) for v in grouped_facts.values())
-            logger.info(
-                f"[LoadPatientContext] Loaded {total_facts} prior facts across "
-                f"{len(grouped_facts)} categories"
-            )
-        except Exception as e:
-            logger.error(f"[LoadPatientContext] Failed to load clinical embeddings: {e}")
-
-    patient_context["loaded_from_db"] = bool(
-        patient_context["demographics"] or patient_context["prior_record"] or patient_context["prior_facts"]
+    fields = _fields(snapshot)
+    state["patient_record_fields"] = fields
+    fact_count = sum(len(rows) for rows in fields["prior_facts"].values())
+    logger.info(
+        "[LoadPatientContext] snapshot source=%s version=%s facts=%d visits=%d",
+        snapshot["source"], snapshot["version"], fact_count, snapshot["visit_count"],
     )
-
-    state["patient_record_fields"] = patient_context
     _trace(
         controls,
-        "loaded" if patient_context["loaded_from_db"] else "empty",
-        f"demographics={bool(patient_context['demographics'])}, "
-        f"prior_record={bool(patient_context['prior_record'])}, "
-        f"prior_facts={sum(len(v) for v in patient_context['prior_facts'].values())} facts",
+        "loaded" if fields["loaded_from_db"] else "empty",
+        f"source={snapshot['source']}, version={snapshot['version']}, "
+        f"demographics={bool(fields['demographics'])}, "
+        f"prior_record={bool(fields['prior_record'])}, prior_facts={fact_count} facts",
     )
-
     return state
+
+
+def _fields(snapshot: Optional[PatientContextSnapshot]) -> Dict[str, Any]:
+    """Map a snapshot onto the patient_record_fields shape downstream nodes read."""
+    if snapshot is None:
+        return {
+            "demographics": {},
+            "prior_record": {},
+            "prior_facts": {},
+            "visit_count": 0,
+            "loaded_from_db": False,
+            "snapshot_version": 0,
+            "snapshot_source": "empty",
+        }
+    return {
+        "demographics": snapshot["demographics"],
+        "prior_record": snapshot["prior_record"],
+        "prior_facts": snapshot["facts_by_type"],
+        "visit_count": snapshot["visit_count"],
+        "loaded_from_db": snapshot["loaded_from_db"],
+        "snapshot_version": snapshot["version"],
+        "snapshot_source": snapshot["source"],
+    }
 
 
 def _trace(controls: Dict[str, Any], action: str, detail: str) -> None:

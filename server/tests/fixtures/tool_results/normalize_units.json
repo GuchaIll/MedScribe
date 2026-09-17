@@ -1,0 +1,38 @@
+{
+  "tool_id": "normalize_units",
+  "contract_version": "1.2",
+  "note": "Canned ToolResult bodies for the #51 stub tools. Synthetic data only.",
+  "cases": {
+    "ok": {
+      "ok": true,
+      "data": {
+        "values": [
+          {
+            "fact_key": "hemoglobin",
+            "value": 112.0,
+            "unit": "g/L",
+            "from": {
+              "value": 11.2,
+              "unit": "g/dL"
+            },
+            "input_citation_ids": [
+              "chunk:doc_7:p2:c3"
+            ]
+          }
+        ],
+        "conversion_table_version": "v1"
+      },
+      "citations": [],
+      "error": null
+    },
+    "empty": {
+      "ok": true,
+      "data": {
+        "values": [],
+        "conversion_table_version": "v1"
+      },
+      "citations": [],
+      "error": null
+    }
+  }
+}

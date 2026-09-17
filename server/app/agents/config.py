@@ -19,8 +19,11 @@ SUB_ASK_MIN_CONFIDENCE: float = 0.75
 MAX_FANOUT_WORKFLOWS: int = 3
 QUERY_MATERIALIZATION_WAIT_MS: int = 20_000
 
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from app.core.clinical_suggestions import ClinicalSuggestionEngine
@@ -67,8 +70,9 @@ class AgentContext:
     # ── RAG enhancement services ────────────────────────────────────────────
     hybrid_retrieval_service: Optional[Any] = None  # HybridRetrievalService
 
-    # ── Diagnostic intelligence ─────────────────────────────────────────────
-    tool_universe_service: Optional[Any] = None  # ToolUniverseService
+    # ── Safety engines (backends of the three safety tools, #51) ───────────
+    dosage_calculator: Optional[Any] = None      # DosageCalculator
+    lab_interpreter: Optional[Any] = None        # LabInterpreter
 
     # ── Tuning knobs ────────────────────────────────────────────────────────
     max_llm_calls: int = 30
@@ -125,7 +129,8 @@ def create_default_context(
     session_repo = None
     db_session_factory = None
     hybrid_retrieval_service = None
-    tool_universe_service = None
+    dosage_calculator = None
+    lab_interpreter = None
 
     try:
         from app.core.clinical_suggestions import get_clinical_suggestion_engine
@@ -133,14 +138,21 @@ def create_default_context(
     except Exception:
         pass
 
-    # Wire up ToolUniverseService (uses clinical_engine if available)
+    # Safety-tool backends. Each is optional: a missing engine makes its tool
+    # report not_covered rather than failing the call (#51).
     try:
-        from app.agents.tools.tool_universe import get_tool_universe_service
-        tool_universe_service = get_tool_universe_service(
-            clinical_engine=clinical_engine
-        )
+        from app.core.dosage_calculator import get_dosage_calculator
+        dosage_calculator = get_dosage_calculator()
     except Exception:
-        pass
+        logger.warning("AgentContext: DosageCalculator unavailable; check_dosage will not cover doses")
+
+    try:
+        from app.core.lab_interpreter import get_lab_interpreter
+        lab_interpreter = get_lab_interpreter()
+    except Exception:
+        logger.warning(
+            "AgentContext: LabInterpreter unavailable; check_metric_alerts will not cover metrics"
+        )
 
     def _llm_factory():
         from app.models.llm import LLMClient
@@ -221,7 +233,8 @@ def create_default_context(
         session_repo=session_repo,
         db_session_factory=db_session_factory,
         hybrid_retrieval_service=hybrid_retrieval_service if db_session is not None else None,
-        tool_universe_service=tool_universe_service,
+        dosage_calculator=dosage_calculator,
+        lab_interpreter=lab_interpreter,
         max_llm_calls=30,
         grounding_threshold=0.65,
         persistence_floor=0.60,

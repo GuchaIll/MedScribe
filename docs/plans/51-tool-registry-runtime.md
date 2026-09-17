@@ -83,7 +83,8 @@ Out of scope:
    `agents/tools/__init__.py`, `agents/config.py` (`tool_universe_service` dropped), and
    `tests/unit/test_diagnostic_intelligence.py`.
 10. Tests: `tests/unit/test_tool_registry.py`, `test_tool_runner.py`, `test_tool_stubs.py`,
-    `test_safety_tools.py`, `test_session_snapshot.py`; update the diagnostic-intelligence suite.
+    `test_safety_tools.py`, `test_session_snapshot.py`, `test_tool_call_sites.py` (the two exit
+    call sites end to end); rewrite the ToolUniverse half of `test_diagnostic_intelligence.py`.
 
 ## Data models and ephemeral state
 
@@ -143,11 +144,19 @@ patient fields in any log line.
 
 ## Test criteria
 
-Commands:
+Commands (run from `server/`, with `-o addopts=""` because this machine has no
+`pytest-cov`):
 
-- `python -m pytest tests/unit/test_tool_registry.py tests/unit/test_tool_runner.py tests/unit/test_tool_stubs.py tests/unit/test_safety_tools.py tests/unit/test_session_snapshot.py -q` passes
-- `python -m pytest tests/unit/test_diagnostic_intelligence.py tests/unit/test_clinical_suggestions_node.py tests/unit/test_clinical_suggestions.py -q` passes
-- `python -m pytest tests/unit -q` shows no new failures against the branch point
+- `python3 -m pytest tests/unit/test_tool_registry.py tests/unit/test_tool_runner.py tests/unit/test_tool_stubs.py tests/unit/test_safety_tools.py tests/unit/test_session_snapshot.py tests/unit/test_tool_call_sites.py -q` — 122 passed
+- `python3 -m pytest tests/unit/test_diagnostic_intelligence.py -q` — 69 passed, 5 failed, all 5 failing identically at the branch point (`langgraph` is not installed here)
+- `python3 -m pytest tests/unit -q` against the branch point — same 43 failures and 26 collection errors as the baseline, 772 → 915 passing
+- `python3 -m pytest evals -q` — 40 passed, unchanged
+
+Environment limits (pre-existing, not introduced here): this machine's venv has
+no `sqlalchemy`, `langgraph`, `yaml`, or `requests`, so 10 unit modules and 4
+modules under `tests/` cannot be collected at all, on this branch and at the
+branch point alike. Every comparison above is against a baseline run of the same
+commands in a worktree at the branch point.
 
 Acceptance (from the issue):
 
