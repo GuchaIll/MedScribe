@@ -124,6 +124,7 @@ class Medication(BaseModel):
     start_date: Optional[str] = None
     source: Optional[str] = None
     confidence: Optional[float] = None
+    source_chunk_ids: List[str] = Field(default_factory=list)
 
 
 # ── Allergies ─────────────────────────────────────────────────────────────────
@@ -135,6 +136,7 @@ class Allergy(BaseModel):
     category: Optional[str] = None     # "drug", "food", "environmental"
     source: Optional[str] = None
     confidence: Optional[float] = None
+    source_chunk_ids: List[str] = Field(default_factory=list)
 
 
 # ── Family History ────────────────────────────────────────────────────────────
@@ -190,6 +192,7 @@ class Vitals(BaseModel):
     bmi: Optional[str] = None
     timestamp: Optional[str] = None
     confidence: Optional[float] = None
+    source_chunk_ids: List[str] = Field(default_factory=list)
 
 
 # ── Labs ──────────────────────────────────────────────────────────────────────
@@ -201,7 +204,9 @@ class LabResult(BaseModel):
     reference_range: Optional[str] = None
     abnormal: Optional[bool] = None
     date: Optional[str] = None
+    observed_at: Optional[str] = None
     confidence: Optional[float] = None
+    source_chunk_ids: List[str] = Field(default_factory=list)
 
 
 # ── Physical Exam ─────────────────────────────────────────────────────────────
@@ -225,6 +230,7 @@ class Problem(BaseModel):
     status: Optional[str] = None        # "active", "resolved", "chronic"
     source: Optional[str] = None
     confidence: Optional[float] = None
+    source_chunk_ids: List[str] = Field(default_factory=list)
 
 
 # ── Risk Factors ──────────────────────────────────────────────────────────────

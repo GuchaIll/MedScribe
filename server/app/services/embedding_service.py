@@ -22,6 +22,7 @@ The service wraps sentence-transformers and provides:
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -133,6 +134,9 @@ class EmbeddingService:
         embedding: Optional[np.ndarray] = None,
         start_time: Optional[float] = None,
         end_time: Optional[float] = None,
+        document_id: Optional[str] = None,
+        page: Optional[int] = None,
+        received_at: Optional[datetime] = None,
     ) -> None:
         """Persist a chunk embedding to chunk_embeddings table."""
         if self.db is None:
@@ -151,6 +155,9 @@ class EmbeddingService:
             embedding=embedding.tolist(),
             start_time=start_time,
             end_time=end_time,
+            document_id=document_id,
+            page=page,
+            received_at=received_at if received_at is not None else datetime.utcnow(),
         )
         self.db.add(record)
         self.db.flush()
@@ -173,6 +180,7 @@ class EmbeddingService:
         embeddings = self.embed_texts(texts)
 
         from app.database.models import ChunkEmbedding
+        now = datetime.utcnow()
         for chunk, emb in zip(chunks, embeddings):
             record = ChunkEmbedding(
                 session_id=session_id,
@@ -182,6 +190,9 @@ class EmbeddingService:
                 embedding=emb.tolist(),
                 start_time=chunk.get("start"),
                 end_time=chunk.get("end"),
+                document_id=chunk.get("document_id"),
+                page=chunk.get("page"),
+                received_at=chunk.get("received_at", now),
             )
             self.db.add(record)
 
@@ -250,6 +261,8 @@ class EmbeddingService:
         source_span: Optional[str] = None,
         grounding_score: Optional[float] = None,
         is_final: bool = False,
+        source_chunk_ids: Optional[List[str]] = None,
+        received_at: Optional[datetime] = None,
     ) -> None:
         """
         Persist a clinical fact embedding.
@@ -285,6 +298,8 @@ class EmbeddingService:
             grounding_score=grounding_score,
             confidence=confidence,
             is_final=is_final,
+            source_chunk_ids=source_chunk_ids or [],
+            received_at=received_at if received_at is not None else datetime.utcnow(),
         )
         self.db.add(record)
         self.db.flush()
