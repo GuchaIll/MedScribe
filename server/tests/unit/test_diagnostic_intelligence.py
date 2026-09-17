@@ -1,8 +1,7 @@
 """
 Unit tests for Diagnostic Intelligence features:
   - diagnostic_reasoning_node (rule-based + LLM paths)
-  - ToolUniverseService (drug, lab, dosage, comprehensive queries)
-  - clinical_suggestions_node ToolUniverse integration
+  - clinical_suggestions_node safety-tool integration (registry, #51)
   - DiagnosticReasoning record schema models
   - generate_note.py diagnostic intelligence HTML rendering
   - Pipeline graph wiring (diagnostic_reasoning node registration)
@@ -418,190 +417,6 @@ class TestLLMDiagnosticReasoning:
 
 
 # ============================================================================
-#  ToolUniverse Service Tests
-# ============================================================================
-
-
-class TestToolUniverseService:
-    """Tests for ToolUniverseService query methods."""
-
-    def _make_service(self, engine=None, calc=None, interp=None, checker=None):
-        from app.agents.tools.tool_universe import ToolUniverseService
-        return ToolUniverseService(
-            clinical_engine=engine or MagicMock(),
-            dosage_calculator=calc or MagicMock(),
-            lab_interpreter=interp or MagicMock(),
-            drug_checker=checker or MagicMock(),
-        )
-
-    def test_query_drug_info_empty_meds(self):
-        svc = self._make_service()
-        result = svc.query_drug_info(medications=[])
-        assert result["drug_interactions"] == []
-        assert result["risk_level"] == "low"
-
-    def test_query_drug_info_with_meds(self):
-        engine = MagicMock()
-        engine.generate_suggestions.return_value = {
-            "drug_interactions": [{"pair": "A-B", "severity": "major"}],
-            "allergy_alerts": [{"substance": "Penicillin"}],
-            "contraindications": [],
-            "risk_level": "high",
-        }
-        svc = self._make_service(engine=engine)
-        result = svc.query_drug_info(
-            medications=[{"name": "Amoxicillin"}],
-            allergies=[{"substance": "Penicillin"}],
-        )
-        assert len(result["drug_interactions"]) == 1
-        assert result["risk_level"] == "high"
-        assert len(result["allergy_alerts"]) == 1
-
-    def test_query_drug_info_engine_error(self):
-        engine = MagicMock()
-        engine.generate_suggestions.side_effect = RuntimeError("DB down")
-        svc = self._make_service(engine=engine)
-        result = svc.query_drug_info(medications=[{"name": "Metformin"}])
-        assert result["drug_interactions"] == []
-        assert result["risk_level"] == "low"
-
-    def test_query_lab_interpretation_empty(self):
-        svc = self._make_service()
-        result = svc.query_lab_interpretation(labs=[])
-        assert result["interpretations"] == []
-        assert result["abnormal_count"] == 0
-
-    def test_query_lab_interpretation_with_results(self):
-        interp = MagicMock()
-        interp.interpret.return_value = {
-            "results": [
-                {"test": "Glucose", "flag": "high", "value": 200},
-                {"test": "HbA1c", "flag": "critical", "value": 12.0},
-                {"test": "BUN", "flag": "normal", "value": 15},
-            ]
-        }
-        svc = self._make_service(interp=interp)
-        result = svc.query_lab_interpretation(
-            labs=[
-                {"test_name": "Glucose", "value": 200, "unit": "mg/dL"},
-                {"test_name": "HbA1c", "value": 12.0, "unit": "%"},
-                {"test_name": "BUN", "value": 15, "unit": "mg/dL"},
-            ]
-        )
-        assert result["abnormal_count"] == 2
-        assert result["normal_count"] == 1
-        assert len(result["critical_values"]) == 1
-
-    def test_query_dosage_check_empty_meds(self):
-        svc = self._make_service()
-        result = svc.query_dosage_check(medications=[])
-        assert result["dosage_alerts"] == []
-
-    def test_query_dosage_check_with_renal(self):
-        calc = MagicMock()
-        calc.calculate_creatinine_clearance.return_value = 35.0
-        calc.check_renal_dosing.return_value = {
-            "alert": "Reduce metformin dose",
-            "crcl": 35.0,
-        }
-        svc = self._make_service(calc=calc)
-        result = svc.query_dosage_check(
-            medications=[{"name": "metformin", "dose": "1000mg"}],
-            patient_params={"age": 75, "weight_kg": 65, "sex": "M",
-                            "serum_creatinine": 1.8},
-        )
-        assert len(result["dosage_alerts"]) > 0
-        calc.calculate_creatinine_clearance.assert_called_once()
-
-    def test_query_dosage_check_geriatric(self):
-        calc = MagicMock()
-        calc.check_geriatric_appropriateness.return_value = {
-            "alert": "Avoid in elderly",
-        }
-        # No CrCl — no renal call, just geriatric
-        svc = self._make_service(calc=calc)
-        result = svc.query_dosage_check(
-            medications=[{"name": "diazepam"}],
-            patient_params={"age": 78, "sex": "F"},
-        )
-        assert len(result["dosage_alerts"]) > 0
-
-    def test_query_comprehensive_merges_all(self):
-        engine = MagicMock()
-        engine.generate_suggestions.return_value = {
-            "drug_interactions": [],
-            "allergy_alerts": [],
-            "contraindications": [],
-            "risk_level": "low",
-        }
-        interp = MagicMock()
-        interp.interpret.return_value = {"results": []}
-        calc = MagicMock()
-
-        svc = self._make_service(engine=engine, calc=calc, interp=interp)
-        result = svc.query_comprehensive(
-            medications=[{"name": "Metformin"}],
-            labs=[{"test_name": "Glucose", "value": 150}],
-            patient_params={"age": 60, "sex": "M"},
-        )
-        assert "drug_info" in result
-        assert "lab_interpretation" in result
-        assert "dosage_check" in result
-        assert "medical_drugs" in result["tools_executed"]
-        assert "lab_interpretation" in result["tools_executed"]
-
-    def test_query_comprehensive_no_inputs(self):
-        svc = self._make_service()
-        result = svc.query_comprehensive()
-        assert result["tools_executed"] == []
-        assert result["overall_risk_level"] == "low"
-
-
-class TestMaxRisk:
-    """Tests for _max_risk helper."""
-
-    def _max_risk(self, levels):
-        from app.agents.tools.tool_universe import _max_risk
-        return _max_risk(levels)
-
-    def test_empty_list(self):
-        assert self._max_risk([]) == "low"
-
-    def test_single_value(self):
-        assert self._max_risk(["high"]) == "high"
-
-    def test_critical_wins(self):
-        assert self._max_risk(["low", "moderate", "critical"]) == "critical"
-
-    def test_unknown_lowest(self):
-        assert self._max_risk(["unknown", "low"]) == "low"
-
-
-class TestToolUniverseSingleton:
-    """Tests for get_tool_universe_service factory."""
-
-    def test_returns_instance(self):
-        from app.agents.tools.tool_universe import ToolUniverseService
-        import app.agents.tools.tool_universe as mod
-        # Reset singleton
-        mod._instance = None
-        svc = mod.get_tool_universe_service()
-        assert isinstance(svc, ToolUniverseService)
-        # Second call returns same instance
-        assert mod.get_tool_universe_service() is svc
-        # Cleanup
-        mod._instance = None
-
-    def test_passes_engine(self):
-        import app.agents.tools.tool_universe as mod
-        mod._instance = None
-        engine = MagicMock()
-        svc = mod.get_tool_universe_service(clinical_engine=engine)
-        assert svc._clinical_engine is engine
-        mod._instance = None
-
-
-# ============================================================================
 #  Record Schema Tests
 # ============================================================================
 
@@ -681,12 +496,12 @@ class TestDiagnosticReasoningSchema:
 
 
 # ============================================================================
-#  Clinical Suggestions Node -- ToolUniverse Integration Tests
+#  Clinical Suggestions Node -- registry safety tools (#51)
 # ============================================================================
 
 
-class TestClinicalSuggestionsToolUniverse:
-    """Tests for ToolUniverse integration in clinical_suggestions_node."""
+class TestClinicalSuggestionsSafetyTools:
+    """The node is Lane B's registry call site: three safety tools, one group."""
 
     @pytest.fixture
     def state_with_diag_reasoning(self):
@@ -711,9 +526,8 @@ class TestClinicalSuggestionsToolUniverse:
         }
 
     @pytest.fixture
-    def mock_ctx_with_tools(self):
+    def mock_ctx(self):
         ctx = MagicMock()
-        # Patient service
         ctx.patient_service.get_patient_history.return_value = {
             "found": True,
             "patient_id": "PAT001",
@@ -722,113 +536,141 @@ class TestClinicalSuggestionsToolUniverse:
             "diagnoses": [],
             "labs": [],
         }
-        # Clinical engine
         ctx.clinical_engine.generate_suggestions.return_value = {
             "allergy_alerts": [],
             "drug_interactions": [],
             "contraindications": [],
             "risk_level": "low",
         }
-        # ToolUniverse
-        ctx.tool_universe_service = MagicMock()
-        ctx.tool_universe_service.query_comprehensive.return_value = {
-            "drug_info": {"risk_level": "low"},
-            "lab_interpretation": {
-                "critical_values": [{"test": "Glucose", "flag": "critical"}],
-            },
-            "dosage_check": {
-                "dosage_alerts": [{"alert": "Reduce dose"}],
-            },
-            "tools_executed": ["medical_drugs", "lab_interpretation"],
-            "overall_risk_level": "critical",
-        }
+        ctx.db_session_factory = None
         return ctx
 
-    def test_tool_universe_results_merged(self, state_with_diag_reasoning, mock_ctx_with_tools):
-        from app.agents.nodes.clinical_suggestions import clinical_suggestions_node
-        result = clinical_suggestions_node(state_with_diag_reasoning, mock_ctx_with_tools)
+    @staticmethod
+    def _safety_results(*, dosage_alert=True, metric_alert=True):
+        """Canned ToolResults for the three safety tools."""
+        def result(tool_id, alerts, risk, not_covered=()):
+            return {
+                "tool_id": tool_id,
+                "ok": True,
+                "data": {"alerts": list(alerts), "not_covered": list(not_covered),
+                         "risk_level": risk},
+                "citations": [],
+                "error": None,
+                "receipt": {"tool_id": tool_id, "ok": True},
+            }
+
+        return [
+            result("check_med_conflicts", [], "low",
+                   [{"medication": "Metformin 500mg", "reason": "not in the interaction table"}]),
+            result(
+                "check_dosage",
+                [{"type": "renal_adjustment", "severity": "critical",
+                  "message": "reduce dose"}] if dosage_alert else [],
+                "critical" if dosage_alert else "low",
+            ),
+            result(
+                "check_metric_alerts",
+                [{"type": "critical_value", "severity": "critical", "test_name": "Glucose",
+                  "message": "above range"}] if metric_alert else [],
+                "critical" if metric_alert else "low",
+            ),
+        ]
+
+    def _run(self, state, ctx, results):
+        from app.agents.nodes import clinical_suggestions as node_module
+        with patch.object(node_module, "_run_safety_tools",
+                          wraps=node_module._run_safety_tools):
+            with patch("app.agents.tools.run_parallel_group", return_value=results):
+                return node_module.clinical_suggestions_node(state, ctx)
+
+    def test_safety_tool_results_merged(self, state_with_diag_reasoning, mock_ctx):
+        result = self._run(state_with_diag_reasoning, mock_ctx, self._safety_results())
         suggestions = result["clinical_suggestions"]
-        assert "tool_universe" in suggestions
+        assert "safety_tools" in suggestions
+        assert suggestions["safety_tools"]["tools_executed"] == [
+            "check_med_conflicts", "check_dosage", "check_metric_alerts",
+        ]
         assert suggestions.get("lab_critical_values")
         assert suggestions.get("dosage_alerts")
 
-    def test_risk_level_escalation(self, state_with_diag_reasoning, mock_ctx_with_tools):
-        from app.agents.nodes.clinical_suggestions import clinical_suggestions_node
-        result = clinical_suggestions_node(state_with_diag_reasoning, mock_ctx_with_tools)
-        suggestions = result["clinical_suggestions"]
-        assert suggestions["risk_level"] == "critical"
+    def test_not_covered_is_surfaced(self, state_with_diag_reasoning, mock_ctx):
+        """A rule table that says nothing must not read as a clean check."""
+        result = self._run(state_with_diag_reasoning, mock_ctx, self._safety_results())
+        not_covered = result["clinical_suggestions"]["not_covered"]
+        assert not_covered
+        assert not_covered[0]["tool_id"] == "check_med_conflicts"
 
-    def test_diagnostic_risk_flags_integrated(self, state_with_diag_reasoning, mock_ctx_with_tools):
-        from app.agents.nodes.clinical_suggestions import clinical_suggestions_node
-        result = clinical_suggestions_node(state_with_diag_reasoning, mock_ctx_with_tools)
-        suggestions = result["clinical_suggestions"]
-        risk_flags = suggestions.get("risk_flags", [])
+    def test_risk_level_escalation(self, state_with_diag_reasoning, mock_ctx):
+        result = self._run(state_with_diag_reasoning, mock_ctx, self._safety_results())
+        assert result["clinical_suggestions"]["risk_level"] == "critical"
+
+    def test_no_escalation_without_alerts(self, state_with_diag_reasoning, mock_ctx):
+        results = self._safety_results(dosage_alert=False, metric_alert=False)
+        result = self._run(state_with_diag_reasoning, mock_ctx, results)
+        assert result["clinical_suggestions"]["risk_level"] == "low"
+
+    def test_diagnostic_risk_flags_integrated(self, state_with_diag_reasoning, mock_ctx):
+        result = self._run(state_with_diag_reasoning, mock_ctx, self._safety_results())
+        risk_flags = result["clinical_suggestions"].get("risk_flags", [])
         assert any(rf["source"] == "diagnostic_reasoning" for rf in risk_flags)
 
-    def test_trace_includes_tool_universe_flag(self, state_with_diag_reasoning, mock_ctx_with_tools):
-        from app.agents.nodes.clinical_suggestions import clinical_suggestions_node
-        result = clinical_suggestions_node(state_with_diag_reasoning, mock_ctx_with_tools)
+    def test_trace_records_which_tools_ran(self, state_with_diag_reasoning, mock_ctx):
+        result = self._run(state_with_diag_reasoning, mock_ctx, self._safety_results())
         trace = result["controls"]["trace_log"]
         completed = [t for t in trace
                      if t.get("node") == "clinical_suggestions" and t.get("action") == "completed"]
         assert completed
-        assert completed[0].get("tool_universe_used") is True
+        assert completed[0]["safety_tools_used"] is True
+        assert "check_dosage" in completed[0]["safety_tools_run"]
 
-    def test_no_tool_universe_still_works(self, state_with_diag_reasoning):
-        """Node works fine when ToolUniverseService is not available."""
+    def test_node_survives_registry_failure(self, state_with_diag_reasoning, mock_ctx):
+        """A registry that cannot be built degrades to engine-only suggestions."""
         from app.agents.nodes.clinical_suggestions import clinical_suggestions_node
-        ctx = MagicMock()
-        ctx.patient_service.get_patient_history.return_value = {
-            "found": True, "allergies": [], "medications": [],
-            "diagnoses": [], "labs": [],
-        }
-        ctx.clinical_engine.generate_suggestions.return_value = {
-            "allergy_alerts": [], "drug_interactions": [],
-            "contraindications": [], "risk_level": "low",
-        }
-        # Explicitly set tool_universe_service to None and patch the lazy import
-        ctx.tool_universe_service = None
-
-        with patch(
-            "app.agents.nodes.clinical_suggestions._run_tool_universe_checks",
-            return_value=None,
-        ):
-            result = clinical_suggestions_node(state_with_diag_reasoning, ctx)
-        assert "clinical_suggestions" in result
-        # Should still produce suggestions even without tool universe
-        assert result["clinical_suggestions"]["risk_level"] == "low"
+        with patch("app.agents.tools.build_registry", side_effect=RuntimeError("boom")):
+            result = clinical_suggestions_node(state_with_diag_reasoning, mock_ctx)
+        suggestions = result["clinical_suggestions"]
+        assert "safety_tools" not in suggestions
+        assert suggestions["risk_level"] == "low"
 
 
-class TestRunToolUniverseChecks:
-    """Tests for _run_tool_universe_checks helper."""
+class TestSafetyToolArguments:
+    """The node turns record state into the three tools' arguments."""
 
-    def test_returns_none_when_no_service(self):
-        from app.agents.nodes.clinical_suggestions import _run_tool_universe_checks
-        ctx = MagicMock(spec=[])  # empty spec = no attribute
-        with patch("app.agents.nodes.clinical_suggestions._run_tool_universe_checks") as mock_fn:
-            mock_fn.return_value = None
-            result = mock_fn(None, {}, {}, {})
-        assert result is None
-
-    def test_builds_patient_params(self):
-        from app.agents.nodes.clinical_suggestions import _run_tool_universe_checks
-        tool_svc = MagicMock()
-        tool_svc.query_comprehensive.return_value = {
-            "drug_info": {}, "lab_interpretation": {},
-            "dosage_check": {}, "tools_executed": [],
-            "overall_risk_level": "low",
-        }
-        ctx = MagicMock()
-        ctx.tool_universe_service = tool_svc
-
+    def test_problems_merge_record_history_and_reasoning(self):
+        from app.agents.nodes.clinical_suggestions import _problems
         record = {
-            "demographics": {"age": "70", "sex": "Female"},
-            "medications": [{"name": "Metformin"}],
-            "labs": [{"test": "Glucose", "value": 200}],
+            "diagnoses": [{"description": "Type 2 Diabetes"}],
+            "past_medical_history": {"chronic_conditions": [{"name": "Hypertension"}]},
         }
-        _run_tool_universe_checks(ctx, record, {"found": True}, {})
-        call_kwargs = tool_svc.query_comprehensive.call_args
-        assert call_kwargs is not None
+        reasoning = {"top_diagnoses": [{"name": "Type 2 Diabetes"}, {"name": "CKD stage 3"}]}
+        descriptions = [p["description"] for p in _problems(record, reasoning)]
+        assert descriptions == ["Type 2 Diabetes", "Hypertension", "CKD stage 3"]
+
+    def test_patient_params_from_demographics_and_vitals(self):
+        from app.agents.nodes.clinical_suggestions import _patient_params
+        record = {
+            "demographics": {"age": "65", "sex": "Male"},
+            "vitals": {"weight": "70", "height": 175},
+            "labs": [{"test_name": "Creatinine", "value": "1.5"}],
+        }
+        params = _patient_params(record, {})
+        assert params["age"] == 65
+        assert params["weight_kg"] == 70.0
+        assert params["height_cm"] == 175.0
+        assert params["serum_creatinine"] == 1.5
+
+    def test_patient_params_ignore_unparsable_values(self):
+        from app.agents.nodes.clinical_suggestions import _patient_params
+        params = _patient_params(
+            {"demographics": {"age": "sixty-five"}, "vitals": {"weight": "unknown"}}, {},
+        )
+        assert "age" not in params
+        assert "weight_kg" not in params
+
+    def test_rows_ignores_malformed_fields(self):
+        from app.agents.nodes.clinical_suggestions import _rows
+        assert _rows({"medications": "not a list"}, "medications") == []
+        assert _rows({"medications": [{"name": "a"}, "junk"]}, "medications") == [{"name": "a"}]
 
 
 # ============================================================================
@@ -954,17 +796,20 @@ class TestGraphWiring:
 
         assert graph is not None
 
-    def test_agentcontext_has_tool_universe_service(self):
+    def test_agentcontext_has_safety_engine_slots(self):
+        """ToolUniverseService is retired (#51); the safety engines are injected."""
         from app.agents.config import AgentContext
         ctx = AgentContext()
-        assert hasattr(ctx, "tool_universe_service")
-        assert ctx.tool_universe_service is None  # default
+        assert not hasattr(ctx, "tool_universe_service")
+        assert ctx.dosage_calculator is None
+        assert ctx.lab_interpreter is None
 
-    def test_agentcontext_with_tool_universe(self):
+    def test_agentcontext_with_safety_engines(self):
         from app.agents.config import AgentContext
-        mock_svc = MagicMock()
-        ctx = AgentContext(tool_universe_service=mock_svc)
-        assert ctx.tool_universe_service is mock_svc
+        calculator, interpreter = MagicMock(), MagicMock()
+        ctx = AgentContext(dosage_calculator=calculator, lab_interpreter=interpreter)
+        assert ctx.dosage_calculator is calculator
+        assert ctx.lab_interpreter is interpreter
 
 
 # ============================================================================

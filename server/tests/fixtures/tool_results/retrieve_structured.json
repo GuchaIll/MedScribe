@@ -1,0 +1,153 @@
+{
+  "tool_id": "retrieve_structured",
+  "contract_version": "1.2",
+  "note": "Canned ToolResult bodies for the #51 stub tools. Synthetic data only.",
+  "cases": {
+    "ok": {
+      "ok": true,
+      "data": {
+        "kind": "lab_result",
+        "rows": [
+          {
+            "fact_key": "rbc",
+            "value": 3.9,
+            "unit": "x10^12/L",
+            "observed_at": "2026-08-14",
+            "source_chunk_ids": [
+              "chunk:doc_4:p1:c2"
+            ]
+          },
+          {
+            "fact_key": "rbc",
+            "value": 4.4,
+            "unit": "x10^12/L",
+            "observed_at": "2026-05-03",
+            "source_chunk_ids": [
+              "chunk:doc_1:p3:c1"
+            ]
+          }
+        ],
+        "count": 2
+      },
+      "citations": [
+        {
+          "source_kind": "prior_labs",
+          "source_id": "lab:rbc:2026-08-14",
+          "snippet": "RBC 3.9 x10^12/L",
+          "observed_at": "2026-08-14",
+          "received_at": "2026-08-14T11:20:00Z",
+          "evidence_state": "authorized",
+          "locator": null,
+          "score": 0.82
+        }
+      ],
+      "error": null
+    },
+    "empty": {
+      "ok": false,
+      "data": {
+        "reason": "no structured rows for this kind and entity"
+      },
+      "citations": [],
+      "error": "no_source"
+    },
+    "no_source": {
+      "ok": false,
+      "data": {
+        "reason": "rows found but source_chunk_ids are null (legacy rows)"
+      },
+      "citations": [],
+      "error": "no_source"
+    },
+    "in_flight_doc": {
+      "ok": true,
+      "data": {
+        "kind": "lab_result",
+        "rows": [],
+        "count": 0,
+        "in_flight": [
+          {
+            "document_id": "doc_12",
+            "state": "processing",
+            "pages_done": 3,
+            "pages_total": 9,
+            "eta_ms": 4200
+          }
+        ],
+        "partial": true
+      },
+      "citations": [
+        {
+          "source_kind": "uploaded_doc",
+          "source_id": "doc:doc_12",
+          "snippet": "referral letter, pages 1-3 of 9 parsed",
+          "observed_at": null,
+          "received_at": "2026-09-16T09:10:00Z",
+          "evidence_state": "received",
+          "locator": {
+            "page": 1,
+            "char_start": 0,
+            "char_end": 0
+          },
+          "score": null
+        }
+      ],
+      "error": null
+    },
+    "chart_vs_session_conflict": {
+      "ok": true,
+      "data": {
+        "kind": "medication",
+        "rows": [
+          {
+            "fact_key": "medication:metformin:dose",
+            "value": "1000 mg BID",
+            "observed_at": "2026-06-02"
+          }
+        ],
+        "count": 1,
+        "conflict": {
+          "fact_key": "medication:metformin:dose",
+          "chart": {
+            "value": "1000 mg BID",
+            "observed_at": "2026-06-02",
+            "source_id": "lab:na"
+          },
+          "session": {
+            "value": "500 mg BID",
+            "observed_at": "2026-09-16",
+            "source_id": "seg:114"
+          },
+          "resolution": "unresolved"
+        }
+      },
+      "citations": [
+        {
+          "source_kind": "prior_labs",
+          "source_id": "fact:med:metformin",
+          "snippet": "Metformin 1000 mg BID",
+          "observed_at": "2026-06-02",
+          "received_at": "2026-06-02T14:00:00Z",
+          "evidence_state": "authorized",
+          "locator": null,
+          "score": 0.82
+        },
+        {
+          "source_kind": "session_transcript",
+          "source_id": "seg:114",
+          "snippet": "started metformin 500 mg twice daily",
+          "observed_at": null,
+          "received_at": "2026-09-16T09:12:00Z",
+          "evidence_state": "materialized",
+          "locator": {
+            "segment_id": "seg:114",
+            "t_start": 812.4,
+            "t_end": 819.1
+          },
+          "score": 0.74
+        }
+      ],
+      "error": null
+    }
+  }
+}

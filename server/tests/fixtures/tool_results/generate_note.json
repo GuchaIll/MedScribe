@@ -1,0 +1,37 @@
+{
+  "tool_id": "generate_note",
+  "contract_version": "1.2",
+  "note": "Canned ToolResult bodies for the #51 stub tools. Synthetic data only.",
+  "cases": {
+    "ok": {
+      "ok": true,
+      "data": {
+        "note_id": "note_5",
+        "format": "soap",
+        "sections": [
+          "S",
+          "O",
+          "A",
+          "P"
+        ],
+        "word_count": 218,
+        "draft": true
+      },
+      "citations": [],
+      "error": null
+    },
+    "empty": {
+      "ok": true,
+      "data": {
+        "note_id": null,
+        "format": "soap",
+        "sections": [],
+        "word_count": 0,
+        "reason": "no structured record to write from",
+        "draft": true
+      },
+      "citations": [],
+      "error": null
+    }
+  }
+}
