@@ -113,11 +113,21 @@ model may not supply and the keys the runtime injects cannot drift apart.
 | ----- | -------- | ----------------- |
 | `patient_id`, `tenant_id` | cache key, scope check on read | store → loader |
 | `version` | `get_patient_profile` citation, invalidation check | tool → citation |
-| `demographics`, `allergies`, `medications`, `problems` | safety tools, `get_patient_profile` sections | snapshot → tools |
-| `recent_labs_summary`, `recent_visits_index` | `get_patient_profile` sections | snapshot → tools |
-| `retrieval_keys` | Lane B `patient_record_fields`, later `retrieve_structured` scoping | snapshot → node |
+| `demographics` | safety tools (age, sex), `get_patient_profile` | snapshot → tools |
+| `facts_by_type` | `load_patient_context` → `prior_facts`; the allergy / medication / problem / lab section views | snapshot → node, snapshot → tools |
+| `prior_record` | `load_patient_context` → `prior_record`; fallback rows for a section with no indexed facts | snapshot → node |
+| `recent_visits_index` | `get_patient_profile`, later `retrieve_visits` scoping | snapshot → tools |
+| `retrieval_keys` | `latest_record_id` for the profile citation; fact types for later `retrieve_structured` scoping | snapshot → tool |
+| `visit_count` | `load_patient_context` → `visit_count` | snapshot → node |
 | `loaded_at` | TTL expiry, `Citation.received_at` for profile citations | store → tool |
-| `source` | logs and the `cache_hit` receipt flag | store → registry |
+| `loaded_from_db` | `no_source` decision in `get_patient_profile` | snapshot → tool |
+| `source` | `cache_hit` on the receipt, and the node's trace entry | store → registry |
+
+§6.1's named sections (allergies, medications, problems, recent labs) are **not** stored fields.
+Storing them beside `facts_by_type` would be a second copy of the same clinical fact, so they are
+computed by `snapshot_sections()` from the one copy — the reuse rule, applied. Downstream Lane B
+nodes already read facts grouped by fact type, and that grouping is what the embedding store
+emits, so it is the shape kept.
 
 `embedding_handles` from §6.1 is folded into `retrieval_keys`; shipping both would be two names
 for one concept. No field is added "for later": #84 adds the receipt ledger as its own object
@@ -147,9 +157,9 @@ patient fields in any log line.
 Commands (run from `server/`, with `-o addopts=""` because this machine has no
 `pytest-cov`):
 
-- `python3 -m pytest tests/unit/test_tool_registry.py tests/unit/test_tool_runner.py tests/unit/test_tool_stubs.py tests/unit/test_safety_tools.py tests/unit/test_session_snapshot.py tests/unit/test_tool_call_sites.py -q` — 122 passed
+- `python3 -m pytest tests/unit/test_tool_registry.py tests/unit/test_tool_runner.py tests/unit/test_tool_stubs.py tests/unit/test_safety_tools.py tests/unit/test_session_snapshot.py tests/unit/test_tool_call_sites.py -q` — 116 passed
 - `python3 -m pytest tests/unit/test_diagnostic_intelligence.py -q` — 69 passed, 5 failed, all 5 failing identically at the branch point (`langgraph` is not installed here)
-- `python3 -m pytest tests/unit -q` against the branch point — same 43 failures and 26 collection errors as the baseline, 772 → 915 passing
+- `python3 -m pytest tests/unit -q` against the branch point — same 43 failures and 26 collection errors as the baseline, 772 → 876 passing
 - `python3 -m pytest evals -q` — 40 passed, unchanged
 
 Environment limits (pre-existing, not introduced here): this machine's venv has
