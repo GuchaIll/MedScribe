@@ -130,9 +130,22 @@ Stateless structural protocol (no `__init__` signature). Each concrete adapter h
 in the trace contracts (`router`, `planner`, `synthesis`, `judge`, `addressee`).
 No new DB or Redis state.
 
-## Self-review (to fill at PR time)
+## Self-review
 
-- Validation: _todo_
-- Logging: _todo_
-- Non-happy path: _todo_
-- Data models: _todo_
+- Validation: LLMConfigError raised on missing api_key, empty model name, bad
+  LLM_ROLE_* format, unknown provider. BudgetExhaustedError before any network call.
+  ValueError on empty messages/tools/prompt in every public method.
+  StubAdapter.Exhausted on over-call.
+- Logging: every adapter logs at DEBUG on construction and per-call token counts.
+  Every caught exception logged with context (role, model). Budget fallback warns.
+  Span emission failures logged at ERROR (non-fatal). Budget-exhausted try_generate
+  warns at WARNING.
+- Non-happy path: missing env var falls back with warning; bad format raises;
+  unknown provider raises; api key missing raises; BudgetExhaustedError raised
+  before network call when cap is hit; generate_structured repair retry on
+  validation failure, raises ValueError on second failure; StubAdapter.Exhausted
+  on empty queue; LLMTool.try_generate catches all exceptions and returns fallback.
+- Data models: ToolCallProposal is a new in-memory-only type (not persisted);
+  necessity per field: tool_name (runner uses it), tool_args (runner uses it),
+  tool_call_id (correlates to receipt, validator uses it). LLMAdapter is a
+  structural protocol, no new persistent fields. No new DB/Redis state.
