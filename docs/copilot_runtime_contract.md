@@ -3,7 +3,7 @@
 **Status:** `1.2` normative (PR #50). Next contract change follows §10.
 **Contract version:** `1.2`
 **Date:** 2026-09-10
-**Revised:** 2026-09-16 (#50 — 1.2 normative: tool ids v2, evidence state, dispatch table, `planning_agent`, `sub_asks`)
+**Revised:** 2026-09-16 (#50 — 1.2 normative: tool ids v2, evidence state, dispatch table, `planning_agent`, `sub_asks`); 2026-09-30 (#50 — runtime object model and SDD data-model pass, aligned to `docs/design/medscribe-runtime-sdd.md` Appendix A)
 **Phase:** 1A of [agent_refactor_plan.md](./agent_refactor_plan.md)
 **Code:** `server/app/agents/intent/` (gate schema, policy, executor contract), `server/app/agents/tool_contracts.py` (shared tool registry), `server/app/agents/compile_contracts.py` (Lane B outputs), `server/app/agents/config.py` (provisional tuning constants).
 **Tests:** `server/tests/unit/test_intent_contract.py`
@@ -20,12 +20,16 @@ agreed*. Later phases build against it; changing it follows §10.
 Normative from this PR. Implementation issues: #51–#63, #83–#85. Sign-off: #47.
 
 1. **Tool ids v2:** `retrieve_structured` (with `kind=`) replaces the v1 lookup tool; `get_patient_profile` and `retrieve_source_chunks` added; the v1 monolithic safety tool is split into `check_med_conflicts`, `check_dosage`, `check_metric_alerts` (each returns `not_covered` when outside rule coverage); compute tools `normalize_units`, `compute_trend`, `compute_delta` added (LLM-free, planner-allowlisted; #85).
-2. **Evidence state and receipt time:** `Citation` gains `received_at`, `evidence_state` (`received` | `materialized` | `validated` | `authorized`), and `locator`. New `Claim` and `Derivation` types for the strict grounding validator (§5.3).
-3. **Stage B sub-asks:** `TaskSlots` gains `sub_asks` (list of `SubAsk`) and `readings_conflict`. `SubAsk` carries calibrated per-class scores, `entity_hints`, `domain_hints`, `time_range`, `depends_on`.
-4. **Dispatch table:** `dispatch_assist()` is a pure code function; no model decides the execution path. Dispatch values: `silent`, `clarify`, `workflow`, `fanout`, `planning_agent`.
-5. **`planning_agent` caller:** trajectory and compare are now fixed workflows. The `planning_agent` is reached only by dispatch rule 3 or a `needs_plan` handoff (§5.2).
-6. **`ClarifyRequest` / `ScopeChoice`:** every clarify is structured; no model-written free-text question. Provisional `SUB_ASK_MIN_CONFIDENCE` `0.75`, `MAX_FANOUT_WORKFLOWS` `3`, `QUERY_MATERIALIZATION_WAIT_MS` `20000` (config.py §12.9).
+2. **Evidence state, receipt time, stable ids:** `Citation` gains `citation_id` (`{source_kind}:{source_id}`), `received_at`, `evidence_state` (`received` | `materialized` | `validated` | `authorized`), and `locator`, a union tagged on `kind`: `document_span` | `transcript_span` | `row_ref`. New `Claim` and `Derivation` types for the strict grounding validator (§5.3); both reference `citation_id`s.
+3. **Stage B sub-asks:** `TaskSlots` gains `sub_asks` (list of `SubAsk`) and `readings_conflict`. `SubAsk` carries calibrated per-class scores, `entity_hints`, free-text `domain_hints`, canonical `scope_ids`, `time_range`, `depends_on`. `task_subtype` is deprecated (1.1 compatibility only).
+4. **Dispatch table:** `dispatch_assist(context, slots)` is a pure code function returning one `DispatchDecision`; no model decides the execution path. Dispatch values: `silent`, `clarify`, `workflow`, `fanout`, `planning_agent`.
+5. **Planner deferred:** trajectory and compare are fixed workflows. `planning_agent` stays in the dispatch literal so the boundary is stable, but rule 3 maps to `clarify` and logs `needs_plan` until #58 re-enters (SDD §9.2).
+6. **`ClarifyRequest` / `ScopeChoice`:** every clarify is structured; no model-written free-text question. Provisional `SUB_ASK_MIN_CONFIDENCE` `0.75`, `MAX_FANOUT_WORKFLOWS` `3`, `REFERENCE_RESOLUTION_WAIT_MS` `3000`, `RECHECK_INTERVAL_MS` `1000`, `POST_BARRIER_RESERVE_MS` `3300` (config.py).
 7. **`ToolCaller` updated:** `planning_agent` added; `fixed_executor` and `lane_b_stage` unchanged.
+8. **Request carriers (§5.4):** `AssistRequestContext` + `ReceiptWatermarks` own request identity, cutoff, and deadline; `EvidenceBundle` is the one evidence accumulator; fixed workflows return a closed `WorkflowOutcome`; `PlanRequest` + `EvidenceRef` are the immutable handoff; `AssistAnswer` is the rendered output. The 1.1 handoff bag is deleted.
+9. **Source kinds name what a source is** (§6.5): `document`, `observation`, `visit` replace the arrival-time kinds, so one document has one `citation_id`.
+10. **Lane B provenance (§7):** `CandidateFact.provenance` is a `FactProvenance` (`evidence`, `extractor`, `prompt_version`); the fact's source documents and segments are read from it, not stored twice. Review lives in Postgres `review_items`; the review-state enum is derived.
+11. **Scope keys:** the clinician scope key is `clinician_id`. `ingest_delta` is a Lane B stage only; intake is gateway-owned.
 
 ### Revision 1.1 (2026-09-10)
 
@@ -97,27 +101,24 @@ authority, and evidence state. Lanes, workflows, and the planning agent are
 mechanisms under the goal of acquiring the evidence a physician goal needs.
 
 **Fixed workflow** when the evidence class is known and the steps are
-deterministic (retrieval → chunks → synthesis). All tasks in v1.2 start with
-a fixed workflow path.
-**`planning_agent`** only when `dispatch_assist()` routes to it (dependent
-sub-asks, `no_workflow` class accepted, or a fixed workflow hands off via
-`needs_plan`). The planner validates a `WorkerPlan` before any tool runs.
+deterministic (retrieval → chunks → synthesis). Every assist ask in 1.2 runs
+a fixed workflow, keyed by evidence class (§5.1), or is clarified.
+**`planning_agent`** is reserved for dependent sub-asks, an accepted
+`no_workflow` class, or a fixed workflow returning `planning_needed`. While
+the planner is deferred, those asks are clarified and logged as `needs_plan`.
 
 `dispatch_assist()` in `executor_contract.py` is the code form of the dispatch
-table (§5.2). `TASK_EXECUTOR_MODE` maps every task to `fixed`.
+table (§5.2).
 
 
-| Lane / task                           | Executor mode                      | Why                                                 |
-| ------------------------------------- | ---------------------------------- | --------------------------------------------------- |
-| Lane A                                | no LLM at all                      | latency invariant                                   |
-| Lane B compile, including push safety | `fixed` DAG with conditional edges | durable IR, reproducible                            |
-| Lane C                                | `fixed`, never agentic             | authority boundary                                  |
-| `factoid`                             | `fixed` fallback chain             | plan known up front                                 |
-| `safety` (pull)                       | `fixed`                            | determinism + audit                                 |
-| `note`, `compile`, `doc_ingest`       | `fixed` job                        | inputs known                                        |
-| `session_control`, `unknown`          | `fixed`                            | confirm / clarify only                              |
-| `trajectory`                          | `fixed` workflow                   | deterministic escalation; `planning_agent` via handoff if needed |
-| `compare`                             | `fixed` workflow                   | deterministic steps; `planning_agent` via handoff if needed      |
+| Lane / ask                            | Execution                          | Why                         |
+| ------------------------------------- | ---------------------------------- | --------------------------- |
+| Lane A                                | no LLM at all                      | latency invariant           |
+| Lane B compile, including push safety | fixed DAG with conditional edges   | durable IR, reproducible    |
+| Lane C                                | fixed, never agentic               | authority boundary          |
+| Retrieval evidence classes            | fixed workflow per class           | plan known up front         |
+| `note`, `session_control`             | the one `jobs` workflow            | inputs known                |
+| dependent / uncovered asks            | `clarify` until #58                | planner deferred            |
 
 ---
 
@@ -159,7 +160,8 @@ a sub-second budget.
 
 **Addressee:** `patient` · `copilot` · `unknown`
 
-**Task subtype:**
+**Task subtype** (deprecated, G7): 1.1 compatibility only. Dispatch reads
+`sub_asks`; workflows key on evidence class. Removed when #55 merges.
 
 
 | Task              | Meaning                                                    | Example                                                  | Lane         | Executor        |
@@ -215,12 +217,14 @@ field.**
 | `sub_asks`          | list of `SubAsk`                        | evidence breakdown from Stage B; `[]` until Stage B ships (#55) |
 | `readings_conflict` | bool                                    | true when sub-asks reference contradictory readings; triggers `clarify` |
 
-`SubAsk` (§12.3): `sub_ask_id`, `span`, `class_scores` (evidence class → float), `entity_hints`, `domain_hints`, `time_range`, `depends_on`. A class is accepted at `SUB_ASK_MIN_CONFIDENCE`. Stage B never emits tool ids.
+`SubAsk` (§12.3): `sub_ask_id`, `span`, `class_scores` (evidence class → float), `entity_hints`, `domain_hints` (free text), `scope_ids` (canonical scope library ids set by the scope gate), `time_range`, `depends_on`. A class is accepted at `SUB_ASK_MIN_CONFIDENCE`. Stage B never emits tool ids.
+
+**Evidence classes:** `session` · `measurement` · `document` · `trajectory` · `compare` · `safety` · `general` · `note` · `session_control` · `no_workflow`. Compile is a Lane B trigger and document intake is gateway-owned; neither is an ask.
 
 `validate_intent_decision()` enforces the enums, types, and cross-field rules.
 It also rejects forbidden keys anywhere in the decision: `plan`, `tool_ids`,
-`tool_args`, and scope keys (`patient_id`, `tenant_id`, `session_id`,
-`doctor_id`). Output that fails validation counts as a gate failure (§4.1 rule 5).
+`tool_args`, and scope keys (`patient_id`, `clinician_id`, `session_id`,
+`tenant_id`). Output that fails validation counts as a gate failure (§4.1 rule 5).
 
 ### 3.5 `intent.decision` audit event
 
@@ -260,7 +264,7 @@ Implemented by `resolve_intervention()` in `server/app/agents/intent/policy.py`.
 2. **Explicit channels always get a visible response:** an answer, a job, or a clarifying question.
 3. **Ambient never auto-answers.** With the research flag on, a copilot-directed ambient utterance can at most produce a suggestion chip.
 4. **Voice never ends or signs off a session.** `wake_word` + `session_control` yields a confirm chip; only the UI button runs it.
-5. **Gate failure** (timeout, error, invalid output): explicit channels answer with the fixed `factoid` chain; ambient stays silent and logs.
+5. **Gate failure** (timeout, error, invalid output): explicit channels answer with the `general` cascade (reason code `default_factoid_chain`); ambient stays silent and logs.
 6. **Push safety alerts** from Lane B bypass the gate and render as `alert` cards (§7.2).
 
 ### 4.2 Modes
@@ -286,7 +290,7 @@ Research chip threshold: addressee confidence ≥ `0.6`.
 | `note`, `compile`, `doc_ingest`              | job                              | job                    | silent                    | copilot ∧ conf ≥ threshold: chip · else silent |
 | `session_control`                            | job (button is the confirmation) | chip (confirm)         | silent                    | silent                                            |
 | `unknown` or no task                         | clarify                          | clarify                | silent                    | silent                                            |
-| gate failure                                 | answer (factoid chain)           | answer (factoid chain) | silent                    | silent                                            |
+| gate failure                                 | answer (general cascade)         | answer (general cascade) | silent                  | silent                                            |
 
 ### 4.4 Frozen vs provisional
 
@@ -299,47 +303,44 @@ Research chip threshold: addressee confidence ≥ `0.6`.
 
 Tables and validators in `server/app/agents/intent/executor_contract.py`.
 
-### 5.1 Fixed chains
+### 5.1 Fixed workflows
 
-All tasks start with a fixed workflow. The planning agent is dispatched by
-`dispatch_assist()` only (§5.2), never by task label alone.
+Each fixed workflow is named after the evidence class it serves (`workflow_id_for()`).
+Tool order inside a workflow is the workflow's own (#56), not a contract table.
 
+| Evidence class | Workflow id |
+| -------------- | ----------- |
+| `session`, `measurement`, `document`, `trajectory`, `compare`, `safety` | same as the class |
+| `general` | `general_cascade` |
+| `note`, `session_control` | `jobs` |
+| `no_workflow` | none; dispatch rule 3 |
 
-| Task              | Tool chain                                                                                              | Notes                                                      |
-| ----------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `factoid`         | `retrieve_session` → `retrieve_structured` → `retrieve_docs`                                           | fallback chain: stop at the first grounded hit             |
-| `safety`          | `retrieve_session` → `check_med_conflicts` → `check_dosage` → `check_metric_alerts`                   | each safety tool returns `not_covered` when outside rule coverage |
-| `note`            | `generate_note`                                                                                         | precondition: draft is fresh (may enqueue a compile first) |
-| `doc_ingest`      | `ingest_delta`                                                                                          | updates the session artifact index                         |
-| `compile`         | —                                                                                                       | enqueues a Lane B `CompileJob`                             |
-| `session_control` | —                                                                                                       | confirm, then Lane C                                       |
-| `unknown`         | —                                                                                                       | clarifying question                                        |
-| `trajectory`      | `get_patient_profile` → `retrieve_structured` → `retrieve_source_chunks` → `normalize_units` → `compute_trend` | deterministic escalation; `planning_agent` via handoff |
-| `compare`         | `get_patient_profile` → `retrieve_structured` → `retrieve_source_chunks` → `normalize_units` → `compute_delta` → `compare_findings` | same; `planning_agent` via handoff if needed |
+### 5.2 Dispatch
 
-### 5.2 Dispatch and planning agent
+`dispatch_assist(context, slots)` is a pure code function returning a
+`DispatchDecision`: `dispatch`, `dispatch_rule`, `clarify_kind` (set iff
+`dispatch` is `clarify`), `reason_codes`, `workflow_ids` (one per workflow run,
+in sub-ask order). It fills the merged `route` span. It validates the context
+and the sub-asks and raises `ContractViolationError` on invalid input. First
+match wins:
 
-`dispatch_assist(channel, slots)` is a pure code function. First match wins:
+| # | Condition | `dispatch` | `clarify_kind` |
+| - | --------- | ---------- | -------------- |
+| 1 | `ambient_transcript` (v1) | `silent` | — |
+| 2 | `readings_conflict` | `clarify` | `reading` |
+| 2 | no sub-asks, or a sub-ask with no accepted class | `clarify` | `rephrase` |
+| 2 | a retrieval sub-ask with no entity hint, domain hint, or scope id | `clarify` | `scope` |
+| 3 | any `depends_on`, or an accepted `no_workflow` class | `clarify` (`planning_agent` once #58 lands); logs `needs_plan` | `narrow` (dependencies) / `rephrase` |
+| 4 | exactly one workflow | `workflow` | — |
+| 5 | 2 to `MAX_FANOUT_WORKFLOWS` (`3`) workflows | `fanout` | — |
+| 6 | more than the cap | `clarify` | `narrow` |
 
-| # | Condition | `DispatchValue` |
-| - | --------- | --------------- |
-| 1 | `ambient_transcript` (v1) | `silent` |
-| 2 | no sub-asks; a sub-ask with no accepted class; underspecified sub-ask; `readings_conflict` | `clarify` |
-| 3 | any `depends_on`, or an accepted `no_workflow` class | `planning_agent` |
-| 4 | one independent sub-ask with one accepted class | `workflow` |
-| 5 | independent parts, at most `MAX_FANOUT_WORKFLOWS` (`3`) | `fanout` |
-| 6 | rule 5 over the cap | `clarify` (`narrow`) |
+Rules 4 to 6 count workflows, not sub-asks: one sub-ask with two accepted
+classes fans out to both.
 
-**`planning_agent`** returns a `WorkerPlan` (`plan_id`, `tasks`, `synthesis_goal`, `needs_scope`), validated before any tool runs: allowlisted refs, no scope keys, acyclic, every sub-ask covered, at most `6` expanded tool calls, one replan, `8000` ms, read-only.
+**`ClarifyRequest`** (§12.4): `kind` (`scope` | `reading` | `rephrase` | `narrow`), `choices` (list of `ScopeChoice`: `scope_id`, `rank`, `label`, `supporting_citation_ids`, `expands_to`), `allow_free_text`. No model writes a free-text clarifying question. `supporting_citation_ids` are `citation_id`s of chart rows.
 
-**Handoff.** A fixed workflow whose requirement is still unmet may hand off once, passing `WorkflowState`. The planner plans only the remaining requirements.
-
-- Planner allowlist: tools with `planner_allowlisted` in §6.2. Includes compute tools `normalize_units`, `compute_trend`, `compute_delta`.
-- Call cap: `6` tool calls per turn (provisional).
-- Wall-clock budget: `8000` ms per turn (provisional).
-- `validate_agent_step()` refuses steps that break the allowlist, cap, budget, or scope rule.
-
-**`ClarifyRequest`** (§12.4): `kind` (`scope` | `reading` | `rephrase` | `narrow`), `choices` (list of `ScopeChoice`), `allow_free_text`. No model writes a free-text clarifying question.
+**`PhysicianChoice`** on the still-processing card: `processed_pages` | `reask` | `none`. Durable notify-when-ready is deferred.
 
 ### 5.3 Grounding check
 
@@ -351,6 +352,42 @@ entailment).
 `GroundingReport`: `claims_checked`, `unsupported_claim_ids`, `verdict`
 (`render` \| `refuse`). Any unsupported claim blocks rendering; the executor
 refuses or re-drafts. How strict to be on partial SQL + RAG mixes is plan §16 Q8.
+
+### 5.4 Request carriers
+
+Declared in `executor_contract.py` (families 1, 3, 4) and `tool_contracts.py`
+(family 2). Field-level readers are in SDD Appendix A.
+
+**`AssistRequestContext`** — one per request: `request_id`, `session_id`,
+`trace_id`, `channel`, `watermarks`, `deadline_at` (absolute ISO-8601 with
+offset; no remaining-ms fields anywhere), `resumes_answer_id`, and runtime
+scope `patient_id`, `clinician_id` from the verified gateway token. Never
+serialized into a model prompt. `validate_request_context()` checks it.
+
+**`ReceiptWatermarks`** — what the request may see, captured once:
+`as_of_receipt`, `snapshot_generation`, `transcript_stream_id`,
+`draft_version` (null until the first compile).
+
+**`EvidenceBundle`** (§6.4) — one per request, append-only, closed before
+synthesis.
+
+**`WorkflowOutcome`** — closed union, `kind` in `completed` (carries `bundle`),
+`clarification_needed` (carries `clarify`), `planning_needed` (carries
+`plan_request`). `validate_workflow_outcome()` rejects any other shape.
+
+**`PlanRequest`** — immutable handoff: `workflow_id`, `reason`, `goal`,
+`scope` (Stage B sub-asks, no scope keys), `unmet_requirements`,
+`evidence_ref`. **`EvidenceRef`**: `bundle_id`, `receipt_ids`, `citation_ids`,
+the evidence as it stood at handoff (`make_evidence_ref()`). The cutoff and
+deadline are read from the context and `sources_checked` from the bundle;
+they are not copied here.
+
+**`AssistAnswer`** — `answer_id`, `request_id`, `session_id`, `status`
+(`answered` | `refused` | `clarifying` | `still_processing`), `claims`,
+`cited`, `bundle_ref`, `grounding`, `clarify`, `coverage`, `watermarks`,
+`resumes_answer_id` (the one answer-chain field), `created_at`.
+`validate_assist_answer()` enforces that `cited` equals the closure of the
+claims' `citation_ids` and derivation inputs, and the per-status rules.
 
 ---
 
@@ -371,8 +408,9 @@ itself is **Phase 1 critical path** under `server/app/agents/tools/`.
 All three call the same implementations, so ranking, citation rules, and
 receipts cannot drift. No tool writes PostgreSQL.
 
-**Scope injection:** `patient_id`, `tenant_id`, `session_id`, and `doctor_id`
-are bound by the runtime from the session. `validate_model_tool_args()` rejects
+**Scope injection:** `patient_id`, `clinician_id`, and `session_id` are bound
+by the runtime from the verified session; `tenant_id` is never a runtime scope
+and is rejected so a model cannot supply one. `validate_model_tool_args()` rejects
 them anywhere in model-supplied args, including nested objects.
 
 ### 6.2 Tool ids
@@ -389,7 +427,7 @@ Compute tools (`normalize_units`, `compute_trend`, `compute_delta`) are LLM-free
 | `retrieve_docs`           | retrieval | `enrich`              | yes            | yes               | none            | yes               |
 | `retrieve_visits`         | retrieval | `enrich`              | yes            | yes               | none            | yes               |
 | `retrieve_for_candidates` | retrieval | `enrich` (primary)    | no             | no                | none            | yes               |
-| `ingest_delta`            | ingest    | `ingest_delta`        | yes            | yes               | session scratch | no                |
+| `ingest_delta`            | ingest    | `ingest_delta`        | no             | no                | session scratch | no                |
 | `compare_findings`        | compare   | `enrich`              | yes            | yes               | none            | yes               |
 | `generate_note`           | note      | —                     | yes            | no                | session draft   | no                |
 | `check_med_conflicts`     | safety    | `safety_and_validate` | yes            | no                | none            | no                |
@@ -409,9 +447,18 @@ Compute tools (`normalize_units`, `compute_trend`, `compute_delta`) are LLM-free
 
 `ToolResult`: `tool_id`, `ok`, `data`, `citations`, `error`, `receipt`.
 
-`Citation` (1.2): `source_kind`, `source_id`, `snippet`, `observed_at`, required `received_at` (when the source entered the system), required `evidence_state` (`received` | `materialized` | `validated` | `authorized`), `locator` (document span: `{page, char_start, char_end}` or transcript span: `{segment_id, t_start, t_end}`), `score`. Document and transcript citations require their respective locator shape.
+`Citation` (1.2): `citation_id` (`{source_kind}:{source_id}`, stable per source, never a chunk id), `source_kind`, `source_id`, `snippet`, `observed_at`, required `received_at` (when the source entered the system), required `evidence_state` (`received` | `materialized` | `validated` | `authorized`), `locator`, `score`.
 
-`Claim` (1.2): `claim_id`, `text`, `claim_type`, `value`, `unit`, `date`, `negated`, `citation_ids`, `derivation`, `evidence_state`. `Derivation`: `operation` (compute tool id), `input_citation_ids`, `receipt_id`. The strict grounding validator re-checks a derived value against its compute receipt before allowing it to render (§5.3).
+`CitationLocator` is a union tagged on `kind`; the shape follows `source_kind`:
+
+| `kind` | Fields | Source kinds |
+| ------ | ------ | ------------ |
+| `document_span` | `doc_id` (= `source_id`), `chunk_id`, `page`, `char_start`, `char_end` | `document` |
+| `transcript_span` | `segment_id` (= `source_id`), `t_start`, `t_end` | `session_transcript` |
+| `row_ref` | `table`, `row_id` (= `source_id`), `column` | `observation`, `visit` |
+| none | | `session_draft`, `patient_snapshot` |
+
+`Claim` (1.2): `claim_id`, `text`, `claim_type`, `value`, `unit`, `date`, `negated`, `citation_ids`, `derivation`, `evidence_state` (weakest among its citations). `Derivation`: `operation` (compute tool id), `input_citation_ids`, `receipt_id`. All ids are `citation_id`s. The strict grounding validator re-checks a derived value against its compute receipt before allowing it to render (§5.3).
 
 `validate_tool_result()` enforces the presence floor (§5.3 checks correctness):
 
@@ -424,21 +471,36 @@ Compute tools (`normalize_units`, `compute_trend`, `compute_delta`) are LLM-free
 `controls.trace_log`): `contract_version`, `invocation_id`, `session_id`,
 `tool_id`, `tool_version`, `caller`, `caller_ref` (stage name or
 `intent.decision` event id), `args_hash` (**hash only — no raw args, query
-text, or PHI**), `ok`, `error`, `cache_hit`, `latency_ms`, `source_refs`,
-`created_at`.
+text, or PHI**), `ok`, `error` (equals `ToolResult.error`), `cache_hit`,
+`latency_ms`, `source_refs`, `created_at`.
+
+**`EvidenceBundle`**: `bundle_id`, `results`, `citations` (keyed by
+`citation_id`, so a source cited twice appears once), `sources_checked`
+(`{tool_id}:{args_hash}`), `coverage`, `closed`. `append_result()` validates
+each result, drops and logs a repeat of the same tool and args, and raises
+`BundleClosedError` after `close_bundle()`. Receipt ids are read from
+`results[].receipt`.
+
+**`CoverageBanner`**: `requirements` (list of `RequirementOutcome`),
+`unreferenced_inflight_doc_ids`, `partial_sources`. **`RequirementOutcome`**:
+`doc_id`, `need` (`received` < `described` < `indexed` < `facts`), `status`
+(`met` | `unmet_terminal` | `pending`), `failure_code` (`unreadable_file` |
+`ocr_failed` | `extraction_failed` | `timeout`, set only for `unmet_terminal`).
 
 ### 6.5 Source kinds
 
+
+A source kind names what a source is, never when it arrived. Whether a
+document came in this session is read from `ingest_documents.session_id`.
 
 | Source kind          | Meaning                                   |
 | -------------------- | ----------------------------------------- |
 | `session_transcript` | current encounter transcript              |
 | `session_draft`      | current structured draft in Redis         |
 | `patient_snapshot`   | session-cached patient context (plan §6) |
-| `uploaded_doc`       | document added this session               |
-| `prior_labs`         | structured lab rows from prior encounters |
-| `prior_docs`         | historical documents / chunk embeddings   |
-| `prior_visits`       | prior visit notes and summaries           |
+| `document`           | an ingested document, any session         |
+| `observation`        | a structured observation row (labs, vitals, meds, allergies, problems) |
+| `visit`              | a visit record                            |
 
 ---
 
@@ -457,7 +519,8 @@ in Phase 3; delta compile in Phase 4. The semantics are fixed now.
 | `structured_record` | draft, materialized from`active` facts          |
 | `validation_report` | hard validate + soft score + conflicts          |
 | `safety_alerts`     | push path;**always present**, may be empty      |
-| `review_package`    | when review is needed                           |
+
+Review items live in Postgres `review_items` (SDD §4.7), not in Lane B output.
 
 Not necessarily a SOAP note.
 
@@ -485,19 +548,24 @@ Background compiles **merge**; they do not rebuild conflicting drafts.
 
 **Fact identity.** `fact_key = canonical_type:entity[:qualifier]`, e.g.
 `allergy:amoxicillin`, `lab:rbc:2024-11-02`, `med:lisinopril`. Build keys with
-`make_fact_key()`. Each observation also has `fact_id`, `status`,
-`superseded_by`, `source_segment_ids`, `source_doc_ids`, `confidence`.
+`make_fact_key()`. Each candidate fact also has `fact_id`, `status`,
+`superseded_by`, `confidence` (`FactIdentity`), and `provenance`, a
+`FactProvenance`: `evidence` (list of `Citation`), `extractor`,
+`prompt_version`. The documents and transcript segments a fact came from are
+the `source_id`s of its evidence, read with `fact_source_ids()`.
 
 **Statuses:** `active` · `superseded` · `retracted` · `needs_review`
 
 **Supersession rules**
 
 1. A later correction marks the prior fact `superseded`, or `retracted` if explicitly negated, and sets `superseded_by` to the new `fact_id` (`supersede()`).
-2. Source segment ids stay on both old and new facts so audit shows the self-correction.
+2. Provenance stays on both old and new facts so audit shows the self-correction.
 3. Materialization uses `active` facts. Superseded rows stay in the working set for trace; nothing is deleted.
 4. A draft never holds two `active` facts with the same key (`duplicate_active_keys()` must be empty).
 
-**Interaction with review** (`DELTA_ACTION`)
+**Interaction with review** (`DELTA_ACTION`). The review state is derived
+from `review_items` and the chart write record, never stored; `DELTA_ACTION`
+is its only reader.
 
 
 | Where the fact already is | Action                                                                                                           |
@@ -508,7 +576,7 @@ Background compiles **merge**; they do not rebuild conflicting drafts.
 | `persisted`               | `open_new_review_item`                                                                                           |
 
 **`CompileJob`:** `session_id`, `base_draft_version`, `new_segment_ids`,
-`new_document_ids`, `full_recompute`. If `base_draft_version` is stale, the job
+`new_doc_ids`, `full_recompute`. If `base_draft_version` is stale, the job
 rebases or retries. It never clobbers a newer draft.
 
 **Phase 4 exit:** a gold session where an allergy is stated then corrected
@@ -523,15 +591,16 @@ Checkable rules for code review.
 
 1. Lane A calls no LLM. `POST /transcribe` does no gate call, retrieval, compile, or PostgreSQL write on the request thread.
 2. The gate never emits tool ids, tool order, or scope keys. Stage B emits `sub_asks` (evidence descriptions only).
-3. Model-supplied tool args never carry `patient_id`, `tenant_id`, `session_id`, or `doctor_id`.
+3. Model-supplied tool args never carry `patient_id`, `clinician_id`, `session_id`, or `tenant_id`.
 4. No tool has a PostgreSQL write mode. Only Lane C writes durable patient-record changes, and only approved ones.
 5. An assist answer renders only after the grounding check passes. With no source, it says so. A derived value renders only with a compute receipt.
-6. The `planning_agent` runs only on dispatch rule 3 or a `needs_plan` handoff; a handoff never changes goal, scope, or re-runs a checked source; every clarify is a structured `ClarifyRequest`.
+6. The `planning_agent` runs only on dispatch rule 3 or a `planning_needed` outcome, and not at all until #58; a `PlanRequest` is immutable and never re-runs an entry in the bundle's `sources_checked`; every clarify is a structured `ClarifyRequest`.
 7. Lane B, fixed executors, and the `planning_agent` call the same tool implementations through one registry (`lane_b_stage`, `fixed_executor`, `planning_agent`).
 8. Review never blocks transcript or assist answers. No `interrupt_before` on the normal visit path.
 9. Lane B outputs always carry `safety_alerts`. Delta compiles never silently override an open or approved review item.
 10. Note generation is a tool/job, never a required compile step.
-11. Retrieval never returns evidence received after `as_of_receipt`. Evidence states: `received`, `materialized`, `validated`, `authorized`.
+11. Retrieval never returns evidence received after `as_of_receipt`, read from `AssistRequestContext.watermarks`. Evidence states: `received`, `materialized`, `validated`, `authorized`.
+12. The evidence bundle is append-only and closed before synthesis; an answer's `cited` equals the citation closure of its claims.
 
 ---
 
@@ -551,7 +620,8 @@ error costs and metrics.
 | `expected_task_subtype` | §3.3                                                                          |
 | `expected_mode`         | policy outcome                                                                |
 | `expected_sub_asks`     | list of `SubAsk` objects the gate should produce                              |
-| `expected_dispatch`     | `silent` \| `clarify` \| `workflow` \| `fanout` \| `planning_agent`           |
+| `expected_dispatch`     | `silent` \| `clarify` \| `workflow` \| `fanout` (`planning_agent` not used while the planner is deferred) |
+| `expected_dispatch_rule`| row of the §5.2 table, 1 to 6                                                  |
 | `source_prefs`, `note`  | optional slot labels                                                          |
 
 **`intent_addressee_v1.jsonl`**: ambient rows for Stage A.
@@ -566,8 +636,9 @@ error costs and metrics.
 | `task_subtype_if_copilot` | required iff`expected_addressee` is `copilot` |
 | `note`                    | optional                                      |
 
-**Now:** tests check that every task row yields `expected_mode`, that agent rows
-stay within the allowlist, and that every addressee row is silent in v1 and
+**Now:** tests check that every task row yields `expected_mode` and that
+`dispatch_assist()` on its `expected_sub_asks` yields `expected_dispatch` and
+`expected_dispatch_rule`, and that every addressee row is silent in v1 and
 chips only on copilot rows under the research flag.
 
 **Later:** the task set seeds Phase 2 slot-extraction and agent evals (subtype
@@ -586,10 +657,11 @@ decision-log entry.
 
 A PR that changes any of these:
 
-- addressee, channel, task subtype, lane, mode, executor mode, or status enums
+- addressee, channel, task subtype, evidence class, lane, mode, dispatch, clarify, outcome, answer status, or encounter status enums
 - `IntentDecision`, `AddresseeDecision`, `TaskSlots`, `IntentDecisionEvent` fields
 - tool ids, a tool's row in §6.2, tool callers, Lane B stage names, or source kinds
-- `ToolResult`, `Citation`, `ToolInvocationReceipt`, `LaneBOutputs`, `SafetyAlertCard`, `FactIdentity`, `CompileJob` fields
+- `ToolResult`, `Citation`, `CitationLocator`, `ToolInvocationReceipt`, `EvidenceBundle`, `CoverageBanner`, `LaneBOutputs`, `SafetyAlertCard`, `FactIdentity`, `FactProvenance`, `CompileJob` fields
+- `AssistRequestContext`, `ReceiptWatermarks`, `DispatchDecision`, `WorkflowOutcome`, `PlanRequest`, `EvidenceRef`, `AssistAnswer` fields
 - fact statuses, review states, `DELTA_ACTION`, safety severities
 - a rule in §4.1, §5, §6.1, §6.4, or §7, or a row in §4.3
 
@@ -600,9 +672,10 @@ must, in the same PR:
 3. update the golden sets and `test_intent_contract.py`
 4. add a row to the decision log in [agent_refactor_plan.md §15](./agent_refactor_plan.md#15-decision-log)
 
-Provisional numbers (chip threshold `0.6`, planner cap `6`, budget `8000` ms,
-`SUB_ASK_MIN_CONFIDENCE` `0.75`, `MAX_FANOUT_WORKFLOWS` `3`,
-`QUERY_MATERIALIZATION_WAIT_MS` `20000`, push-alert severities) can change
+Provisional numbers (chip threshold `0.6`, `SUB_ASK_MIN_CONFIDENCE` `0.75`,
+`MAX_FANOUT_WORKFLOWS` `3`, `REFERENCE_RESOLUTION_WAIT_MS` `3000`,
+`RECHECK_INTERVAL_MS` `1000`, `POST_BARRIER_RESERVE_MS` `3300`, push-alert
+severities) can change
 without a version bump when backed by eval or latency evidence. Provisional
 numbers live in `agents/config.py` and are imported from there.
 

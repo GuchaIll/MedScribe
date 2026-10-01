@@ -19,6 +19,9 @@ Changes from 1.1:
 - EvidenceClass literal added (§12.3).
 - SubAsk TypedDict added (§12.3).
 - TaskSlots gains sub_asks and readings_conflict (§12.3).
+- SubAsk gains scope_ids (canonical scope library ids, G5).
+- TaskSubtype is deprecated (G7): 1.1 compatibility only; dispatch reads
+  sub_asks and workflows key on EvidenceClass. Remove when #55 merges.
 """
 
 from __future__ import annotations
@@ -42,6 +45,9 @@ Addressee = Literal["patient", "copilot", "unknown"]
 # Where the input came from, not what it means
 Channel = Literal["explicit_ui", "wake_word", "ambient_transcript"]
 
+# Deprecated (G7): 1.1 compatibility only. Dispatch reads sub_asks; workflows
+# key on EvidenceClass. Remove TaskSubtype, TASK_LANE, ASSIST_TASKS, JOB_TASKS
+# when #55 merges.
 TaskSubtype = Literal[
     # Assist answers
     "factoid",
@@ -57,21 +63,21 @@ TaskSubtype = Literal[
     "unknown",
 ]
 
-# Evidence classes used by Stage B sub-asks (§12.3).
-# Mirrors the TaskSubtype job values plus retrieval classes and no_workflow.
+# Evidence classes used by Stage B sub-asks (§12.3, SDD §6.2.2). Each fixed
+# workflow is named after its class (workflow_id_for() in executor_contract).
+# compile is a Lane B trigger and doc_ingest is gateway intake; neither is an ask.
 EvidenceClass = Literal[
     "session",
     "measurement",
     "document",
     "trajectory",
     "compare",
-    "general",
-    # Fixed job classes
-    "compile",
+    "safety",           # need = facts
+    "general",          # runs as general_cascade
+    # Jobs: note and session_control run in the one jobs workflow
     "note",
-    "doc_ingest",
     "session_control",
-    # Sentinel: no known workflow covers this class; dispatch -> planning_agent
+    # Sentinel: no fixed workflow covers this ask; dispatch rule 3
     "no_workflow",
 ]
 
@@ -159,7 +165,8 @@ class SubAsk(TypedDict):
     span: str                        # the portion of the clinician's ask this covers
     class_scores: Dict[str, float]   # evidence_class -> calibrated confidence 0..1
     entity_hints: List[str]          # e.g. ["rbc", "hemoglobin"]
-    domain_hints: List[str]          # clinical sectors or scope library ids
+    domain_hints: List[str]          # free-text clinical sectors, e.g. ["respiratory"]
+    scope_ids: List[str]             # canonical scope library ids set by the scope gate (G5)
     time_range: Optional[str]        # e.g. "last_2_years", "since_last_visit"
     depends_on: List[str]            # sub_ask_ids this one depends on
 
@@ -222,7 +229,7 @@ def _is_unit_interval(value: Any) -> bool:
     return is_number and 0.0 <= value <= 1.0
 
 
-def _sub_ask_errors(sub_asks: List[Any]) -> List[str]:
+def sub_ask_errors(sub_asks: List[Any]) -> List[str]:
     """Validate the declarative Stage B payload before dispatch consumes it."""
     errors: List[str] = []
     required = set(SubAsk.__annotations__)
@@ -252,6 +259,10 @@ def _sub_ask_errors(sub_asks: List[Any]) -> List[str]:
             errors.append(f"{prefix}.entity_hints must be a list of strings")
         if not _is_str_list(sub_ask["domain_hints"]):
             errors.append(f"{prefix}.domain_hints must be a list of strings")
+        if not _is_str_list(sub_ask["scope_ids"]) or not all(sub_ask["scope_ids"]):
+            errors.append(f"{prefix}.scope_ids must be a list of non-empty strings")
+        elif len(set(sub_ask["scope_ids"])) != len(sub_ask["scope_ids"]):
+            errors.append(f"{prefix}.scope_ids must not repeat an id")
         if sub_ask["time_range"] is not None and not isinstance(sub_ask["time_range"], str):
             errors.append(f"{prefix}.time_range must be a string or null")
         if not _is_str_list(sub_ask["depends_on"]):
@@ -383,7 +394,7 @@ def _slot_errors(task: Dict[str, Any]) -> List[str]:
     if not isinstance(task.get("sub_asks"), list):
         errors.append("sub_asks must be a list")
     else:
-        errors.extend(_sub_ask_errors(task["sub_asks"]))
+        errors.extend(sub_ask_errors(task["sub_asks"]))
     if not isinstance(task.get("readings_conflict"), bool):
         errors.append("readings_conflict must be bool")
 

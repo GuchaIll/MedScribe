@@ -6,6 +6,10 @@ Defines the fact-lifecycle types and helpers used by the compile pipeline
 safety push alerts, and the compile job envelope.
 
 Semantics and change control: docs/copilot_runtime_contract.md §7.
+
+Review lives in Postgres review_items (SDD §4.7). ReviewState here is a derived
+enum: computed from review_items and the chart write record, never stored, and
+read only by DELTA_ACTION in delta compile (#62).
 """
 
 from __future__ import annotations
@@ -13,7 +17,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, FrozenSet, List, Literal, Optional, Tuple, TypedDict, get_args
 
-from app.agents.tool_contracts import Citation
+from app.agents.tool_contracts import SOURCE_KINDS, Citation, ContractViolationError
 
 
 # ---------------------------------------------------------------------------
@@ -23,6 +27,7 @@ from app.agents.tool_contracts import Citation
 FactStatus = Literal["active", "superseded", "retracted", "needs_review"]
 FACT_STATUSES: Tuple[str, ...] = get_args(FactStatus)
 
+# Derived, never stored; only reader is DELTA_ACTION (#62).
 ReviewState = Literal["working_draft", "open_review", "approved_pending_write", "persisted"]
 REVIEW_STATES: Tuple[str, ...] = get_args(ReviewState)
 
@@ -141,14 +146,21 @@ def duplicate_active_keys(facts: List[Dict[str, Any]]) -> List[str]:
 # Compile job envelope (§7.3)
 # ---------------------------------------------------------------------------
 
+class FactProvenance(TypedDict):
+    """Where a candidate fact came from. Evidence uses the same Citation every
+    tool returns, so extraction output is cited with no translation layer.
+    Confidence lives on the fact, not here."""
+    evidence: List[Citation]
+    extractor: str                  # extraction stage or model id
+    prompt_version: str             # prompt registry version (#48) used for extraction
+
+
 class FactIdentity(TypedDict):
-    """Stable identity and lifecycle metadata carried by a candidate fact."""
+    """Identity and lifecycle fields shared by compile, review, and delta compile."""
     fact_id: str
     fact_key: str
     status: FactStatus
     superseded_by: Optional[str]
-    source_segment_ids: List[str]
-    source_doc_ids: List[str]
     confidence: Optional[float]
 
 
@@ -156,14 +168,42 @@ class CandidateFact(FactIdentity):
     """Compile candidate with its extracted clinical payload and provenance."""
     type: str
     value: Any
-    provenance: Dict[str, Any]
+    provenance: FactProvenance
+
+
+def fact_source_ids(fact: Dict[str, Any], source_kind: str) -> List[str]:
+    """The source_ids of one kind that a fact's evidence cites, in order, once each.
+
+    The one way to read the documents (source_kind="document") or transcript
+    segments ("session_transcript") a fact came from; they are not stored as
+    separate lists.
+
+    Raises:
+        ContractViolationError: unknown source_kind, or the fact has no provenance evidence list.
+    """
+    if source_kind not in SOURCE_KINDS:
+        raise ContractViolationError(f"source_kind={source_kind!r} not in {SOURCE_KINDS}")
+    provenance = fact.get("provenance")
+    evidence = provenance.get("evidence") if isinstance(provenance, dict) else None
+    if not isinstance(evidence, list):
+        raise ContractViolationError(
+            f"fact_id={fact.get('fact_id')!r} has no provenance.evidence list; expected FactProvenance"
+        )
+    ids: List[str] = []
+    for citation in evidence:
+        if isinstance(citation, dict) and citation.get("source_kind") == source_kind:
+            source_id = citation.get("source_id")
+            if source_id and source_id not in ids:
+                ids.append(source_id)
+    return ids
+
 
 class CompileJob(TypedDict):
     """Input envelope passed to the Lane B compile pipeline."""
     session_id: str
     base_draft_version: str
     new_segment_ids: List[str]
-    new_document_ids: List[str]
+    new_doc_ids: List[str]
     full_recompute: bool
 
 
@@ -189,4 +229,3 @@ class LaneBOutputs(TypedDict):
     structured_record: Dict[str, Any]
     validation_report: Dict[str, Any]
     safety_alerts: List[SafetyAlertCard]
-    review_package: Optional[Dict[str, Any]]
