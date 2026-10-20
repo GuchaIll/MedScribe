@@ -322,6 +322,120 @@ class ExtractCandidatesTests(unittest.TestCase):
             self.assertEqual(mock_llm.generate_response.call_count, 2)
 
 
+class ChunkProvenanceTests(unittest.TestCase):
+    """Phase 1B: per-fact chunk_id, span locator, and grounded flag (#53)."""
+
+    def test_find_best_chunk_returns_correct_chunk_and_span(self):
+        chunks = [
+            {"chunk_id": "c0", "source": "transcript", "text": "Patient is allergic to aspirin."},
+            {"chunk_id": "c1", "source": "transcript", "text": "Sodium level is 138 mEq/L today."},
+        ]
+        result = extract._find_best_chunk("Sodium level is 138", chunks)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chunk"]["chunk_id"], "c1")
+        self.assertEqual(result["char_start"], 0)
+        self.assertEqual(result["char_end"], len("Sodium level is 138"))
+
+    def test_find_best_chunk_falls_back_to_first_when_no_match(self):
+        chunks = [
+            {"chunk_id": "c0", "source": "transcript", "text": "Some unrelated text."},
+        ]
+        result = extract._find_best_chunk("text that does not appear anywhere", chunks)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["chunk"]["chunk_id"], "c0")
+        self.assertIsNone(result["char_start"])
+
+    def test_find_best_chunk_returns_none_for_empty_chunks(self):
+        self.assertIsNone(extract._find_best_chunk("anything", []))
+
+    def test_ensure_evidence_spans_binds_chunk_id_and_locator(self):
+        chunks = [
+            {"chunk_id": "c0", "source": "transcript", "text": "Patient has hypertension."},
+            {"chunk_id": "c1", "source": "transcript", "text": "Lab result: sodium 138 mEq/L."},
+        ]
+        candidates = [
+            {
+                "type": "lab_result",
+                "value": {"test": "sodium"},
+                "confidence": 0.9,
+                "provenance": {"evidence": [{"snippet": "sodium 138", "strength": 0.9}]},
+            }
+        ]
+        result = extract._ensure_evidence_spans(candidates, chunks)
+        ev = result[0]["provenance"]["evidence"][0]
+        self.assertEqual(ev["chunk_id"], "c1")
+        self.assertTrue(ev["grounded"])
+        self.assertIn("char_start", ev["locator"])
+        self.assertIn("char_end", ev["locator"])
+
+    def test_ensure_evidence_spans_marks_ungrounded_when_no_match(self):
+        chunks = [
+            {"chunk_id": "c0", "source": "transcript", "text": "Unrelated content."},
+        ]
+        candidates = [
+            {
+                "type": "lab_result",
+                "value": {},
+                "confidence": 0.5,
+                "provenance": {"evidence": [{"snippet": "snippet not in any chunk", "strength": 0.5}]},
+            }
+        ]
+        result = extract._ensure_evidence_spans(candidates, chunks)
+        ev = result[0]["provenance"]["evidence"][0]
+        self.assertFalse(ev["grounded"])
+
+    def test_multi_chunk_golden_batch_fact_cites_correct_chunk(self):
+        """Golden batch: fact from chunk 1 must cite chunk 1, not chunk 0."""
+        chunks = [
+            {
+                "chunk_id": "c0",
+                "source": "transcript",
+                "source_id": "sess_1",
+                "text": "Patient has mild hypertension.",
+            },
+            {
+                "chunk_id": "c1",
+                "source": "transcript",
+                "source_id": "sess_1",
+                "text": "Sodium is 138 mEq/L on today's labs.",
+            },
+        ]
+        llm_response = json.dumps({
+            "facts": [
+                {
+                    "fact_type": "lab_result",
+                    "value": {"test": "Sodium", "value": "138", "unit": "mEq/L"},
+                    "confidence": 0.92,
+                    "evidence_text": "Sodium is 138 mEq/L on today's labs",
+                }
+            ]
+        })
+
+        mock_llm = MagicMock()
+        mock_llm.generate_response.return_value = llm_response
+
+        results = extract._call_category_extraction(
+            llm=mock_llm,
+            query={"category": "labs", "prompt": "extract labs", "max_tokens": 256},
+            text="".join(c["text"] for c in chunks),
+            patient_history_prompt="",
+            chunks=chunks,
+        )
+
+        self.assertEqual(len(results), 1)
+        ev = results[0]["provenance"]["evidence"][0]
+        self.assertEqual(ev["chunk_id"], "c1", "Lab fact must cite chunk c1, not c0")
+        self.assertTrue(ev["grounded"], "Fact found in chunk text must be grounded")
+        self.assertIn("char_start", ev["locator"])
+        self.assertIn("char_end", ev["locator"])
+        char_start = ev["locator"]["char_start"]
+        char_end = ev["locator"]["char_end"]
+        self.assertGreaterEqual(char_start, 0)
+        self.assertGreater(char_end, char_start)
+        cited_text = chunks[1]["text"]
+        self.assertLessEqual(char_end, len(cited_text))
+
+
 if __name__ == "__main__":
     unittest.main()
 
