@@ -399,14 +399,37 @@ def _call_category_extraction(
             for fact in data.get("facts", []):
                 fact_id = str(uuid4())[:8]
                 evidence_text = fact.get("evidence_text", "")
+                snippet = evidence_text[:200]
 
-                evidence_span = {
-                    "source": chunks[0].get("source", "transcript") if chunks else "transcript",
-                    "source_id": chunks[0].get("source_id", "unknown") if chunks else "unknown",
-                    "locator": {},
-                    "snippet": evidence_text[:200],
-                    "strength": fact.get("confidence", 0.5),
-                }
+                match = _find_best_chunk(snippet, chunks)
+                if match is not None:
+                    chunk = match["chunk"]
+                    char_start = match["char_start"]
+                    char_end = match["char_end"]
+                    locator: Dict[str, Any] = {}
+                    if chunk.get("source") == "document":
+                        locator["page"] = chunk.get("page")
+                    if char_start is not None:
+                        locator["char_start"] = char_start
+                        locator["char_end"] = char_end
+                    evidence_span = {
+                        "chunk_id": chunk.get("chunk_id", chunk.get("source_id", "unknown")),
+                        "source": chunk.get("source", "transcript"),
+                        "source_id": chunk.get("source_id", chunk.get("chunk_id", "unknown")),
+                        "locator": locator,
+                        "snippet": snippet,
+                        "strength": fact.get("confidence", 0.5),
+                        "grounded": char_start is not None,
+                    }
+                else:
+                    evidence_span = {
+                        "source": "transcript",
+                        "source_id": "unknown",
+                        "locator": {},
+                        "snippet": snippet,
+                        "strength": fact.get("confidence", 0.5),
+                        "grounded": False,
+                    }
 
                 results.append({
                     "fact_id": fact_id,
@@ -513,43 +536,87 @@ def _canonicalize_candidates(candidates: List[Dict[str, Any]]) -> List[Dict[str,
     return candidates
 
 
+def _find_best_chunk(
+    snippet: str,
+    chunks: List[Dict],
+) -> Optional[Dict[str, Any]]:
+    """
+    Return the chunk whose text contains the snippet (case-insensitive),
+    plus char_start and char_end within that chunk.
+
+    Falls back to chunks[0] with no span if no match is found.
+    Returns None if chunks is empty.
+    """
+    if not chunks:
+        return None
+
+    needle = snippet.strip().lower()
+    if needle:
+        for chunk in chunks:
+            haystack = chunk.get("text", "")
+            idx = haystack.lower().find(needle)
+            if idx != -1:
+                return {
+                    "chunk": chunk,
+                    "char_start": idx,
+                    "char_end": idx + len(snippet.strip()),
+                }
+
+    # No match: return first chunk with empty span
+    return {"chunk": chunks[0], "char_start": None, "char_end": None}
+
+
 def _ensure_evidence_spans(candidates: List[Dict[str, Any]], chunks: List[Dict]) -> List[Dict[str, Any]]:
-    """Ensure all candidates have at least one evidence span with proper locators."""
-    
+    """Ensure all candidates have at least one evidence span with chunk_id, locator, and grounded flag."""
+
     for candidate in candidates:
         provenance = candidate.get("provenance", {})
         evidence_list = provenance.get("evidence", []) if isinstance(provenance, dict) else []
-        
+
         if not evidence_list:
-            # Create minimal evidence span
             evidence_list = [{
                 "source": "transcript",
                 "source_id": "unknown",
                 "locator": {},
                 "snippet": f"Extracted {candidate.get('type', 'fact')}",
-                "strength": candidate.get("confidence", 0.5)
+                "strength": candidate.get("confidence", 0.5),
             }]
             candidate["provenance"] = {"evidence": evidence_list}
-        
-        # Enhance evidence with better locators if possible
+
         for evidence in evidence_list:
-            if not evidence.get("locator"):
-                snippet = evidence.get("snippet", "")
-                # Try to find matching chunk
-                for chunk in chunks:
-                    if snippet[:50] in chunk.get("text", ""):
-                        if chunk.get("source") == "transcript":
-                            evidence["locator"] = {
-                                "start_time": chunk.get("start_time"),
-                                "end_time": chunk.get("end_time")
-                            }
-                        else:
-                            evidence["locator"] = {
-                                "start_char": chunk.get("start_char"),
-                                "end_char": chunk.get("end_char")
-                            }
-                        break
-    
+            snippet = evidence.get("snippet", "")
+            match = _find_best_chunk(snippet, chunks)
+
+            if match is None:
+                evidence.setdefault("locator", {})
+                evidence.setdefault("grounded", False)
+                continue
+
+            chunk = match["chunk"]
+            char_start = match["char_start"]
+            char_end = match["char_end"]
+
+            # Bind chunk_id so each fact cites its exact source chunk
+            evidence["chunk_id"] = chunk.get("chunk_id", chunk.get("source_id", "unknown"))
+            evidence["source"] = chunk.get("source", "transcript")
+            evidence["source_id"] = chunk.get("source_id", chunk.get("chunk_id", "unknown"))
+
+            # Build span locator
+            locator: Dict[str, Any] = {}
+            if chunk.get("source") == "document":
+                locator["page"] = chunk.get("page")
+            if char_start is not None:
+                locator["char_start"] = char_start
+                locator["char_end"] = char_end
+            evidence["locator"] = locator
+
+            # Mark grounded: snippet must be a substring of the cited chunk
+            if char_start is not None:
+                evidence["grounded"] = True
+            else:
+                # Fell back to chunks[0] without a span match
+                evidence["grounded"] = False
+
     return candidates
 
 
