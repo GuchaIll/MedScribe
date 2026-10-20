@@ -1,0 +1,49 @@
+{
+  "tool_id": "check_dosage",
+  "contract_version": "1.2",
+  "note": "Canned ToolResult bodies for the #51 stub tools. Synthetic data only.",
+  "cases": {
+    "ok": {
+      "ok": true,
+      "data": {
+        "alerts": [
+          {
+            "type": "renal_adjustment",
+            "severity": "critical",
+            "medication": "metformin",
+            "message": "dose exceeds the limit for eGFR 45"
+          }
+        ],
+        "not_covered": [],
+        "risk_level": "critical"
+      },
+      "citations": [],
+      "error": null
+    },
+    "empty": {
+      "ok": true,
+      "data": {
+        "alerts": [],
+        "not_covered": [],
+        "risk_level": "low"
+      },
+      "citations": [],
+      "error": null
+    },
+    "not_covered": {
+      "ok": false,
+      "data": {
+        "alerts": [],
+        "not_covered": [
+          {
+            "medication": "metformin",
+            "reason": "no age, weight, or renal parameters supplied"
+          }
+        ],
+        "risk_level": "unknown"
+      },
+      "citations": [],
+      "error": "not_covered"
+    }
+  }
+}

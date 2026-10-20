@@ -1,0 +1,139 @@
+{
+  "tool_id": "retrieve_source_chunks",
+  "contract_version": "1.2",
+  "note": "Canned ToolResult bodies for the #51 stub tools. Synthetic data only.",
+  "cases": {
+    "ok": {
+      "ok": true,
+      "data": {
+        "chunks": [
+          {
+            "chunk_id": "chunk:doc_7:p2:c3",
+            "document_id": "doc_7",
+            "page": 2,
+            "text": "Hemoglobin 11.2 g/dL (low)"
+          }
+        ],
+        "count": 1
+      },
+      "citations": [
+        {
+          "source_kind": "uploaded_doc",
+          "source_id": "chunk:doc_7:p2:c3",
+          "snippet": "Hemoglobin 11.2 g/dL (low)",
+          "observed_at": "2026-09-02",
+          "received_at": "2026-09-15T08:41:00Z",
+          "evidence_state": "materialized",
+          "locator": {
+            "page": 2,
+            "char_start": 412,
+            "char_end": 441
+          },
+          "score": 0.82
+        }
+      ],
+      "error": null
+    },
+    "empty": {
+      "ok": false,
+      "data": {
+        "reason": "none of the requested chunk ids exist"
+      },
+      "citations": [],
+      "error": "no_source"
+    },
+    "no_source": {
+      "ok": false,
+      "data": {
+        "reason": "cited facts carry no chunk ids (legacy rows)"
+      },
+      "citations": [],
+      "error": "no_source"
+    },
+    "in_flight_doc": {
+      "ok": true,
+      "data": {
+        "chunks": [],
+        "count": 0,
+        "in_flight": [
+          {
+            "document_id": "doc_12",
+            "state": "processing",
+            "pages_done": 3,
+            "pages_total": 9,
+            "eta_ms": 4200
+          }
+        ],
+        "partial": true
+      },
+      "citations": [
+        {
+          "source_kind": "uploaded_doc",
+          "source_id": "doc:doc_12",
+          "snippet": "referral letter, pages 1-3 of 9 parsed",
+          "observed_at": null,
+          "received_at": "2026-09-16T09:10:00Z",
+          "evidence_state": "received",
+          "locator": {
+            "page": 1,
+            "char_start": 0,
+            "char_end": 0
+          },
+          "score": null
+        }
+      ],
+      "error": null
+    },
+    "chart_vs_session_conflict": {
+      "ok": true,
+      "data": {
+        "chunks": [
+          {
+            "chunk_id": "chunk:doc_7:p2:c3"
+          }
+        ],
+        "conflict": {
+          "fact_key": "medication:metformin:dose",
+          "chart": {
+            "value": "1000 mg BID",
+            "observed_at": "2026-06-02",
+            "source_id": "lab:na"
+          },
+          "session": {
+            "value": "500 mg BID",
+            "observed_at": "2026-09-16",
+            "source_id": "seg:114"
+          },
+          "resolution": "unresolved"
+        }
+      },
+      "citations": [
+        {
+          "source_kind": "prior_labs",
+          "source_id": "fact:med:metformin",
+          "snippet": "Metformin 1000 mg BID",
+          "observed_at": "2026-06-02",
+          "received_at": "2026-06-02T14:00:00Z",
+          "evidence_state": "authorized",
+          "locator": null,
+          "score": 0.82
+        },
+        {
+          "source_kind": "session_transcript",
+          "source_id": "seg:114",
+          "snippet": "started metformin 500 mg twice daily",
+          "observed_at": null,
+          "received_at": "2026-09-16T09:12:00Z",
+          "evidence_state": "materialized",
+          "locator": {
+            "segment_id": "seg:114",
+            "t_start": 812.4,
+            "t_end": 819.1
+          },
+          "score": 0.74
+        }
+      ],
+      "error": null
+    }
+  }
+}

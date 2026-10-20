@@ -1,0 +1,51 @@
+{
+  "tool_id": "check_metric_alerts",
+  "contract_version": "1.2",
+  "note": "Canned ToolResult bodies for the #51 stub tools. Synthetic data only.",
+  "cases": {
+    "ok": {
+      "ok": true,
+      "data": {
+        "alerts": [
+          {
+            "type": "critical_value",
+            "severity": "critical",
+            "test_name": "potassium",
+            "value": 6.4,
+            "unit": "mmol/L",
+            "message": "above the critical threshold"
+          }
+        ],
+        "not_covered": [],
+        "risk_level": "critical"
+      },
+      "citations": [],
+      "error": null
+    },
+    "empty": {
+      "ok": true,
+      "data": {
+        "alerts": [],
+        "not_covered": [],
+        "risk_level": "low"
+      },
+      "citations": [],
+      "error": null
+    },
+    "not_covered": {
+      "ok": false,
+      "data": {
+        "alerts": [],
+        "not_covered": [
+          {
+            "test_name": "anti-mullerian hormone",
+            "reason": "no reference range in the table"
+          }
+        ],
+        "risk_level": "unknown"
+      },
+      "citations": [],
+      "error": "not_covered"
+    }
+  }
+}
