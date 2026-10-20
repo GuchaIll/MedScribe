@@ -283,7 +283,7 @@ _LOCATOR_SHAPES: Dict[str, type] = {
 
 
 class Citation(TypedDict):
-    citation_id: str                # "{source_kind}:{source_id}"; stable per source, not per chunk
+    citation_id: str                # make_citation_id(): names the cited span, not the source (SDD A.2)
     source_kind: SourceKind
     source_id: str                  # doc_id, observation id, visit id, transcript segment id
     snippet: Optional[str]
@@ -294,11 +294,33 @@ class Citation(TypedDict):
     score: Optional[float]
 
 
-def make_citation_id(source_kind: str, source_id: str) -> str:
-    """Build the one citation id for a source.
+def _locator_key(locator: Dict[str, Any]) -> str:
+    """The span part of a citation id; transcript times are integer ms, never floats."""
+    kind = locator["kind"]
+    if kind == "document_span":
+        return f"{locator['chunk_id']}:{locator['char_start']}-{locator['char_end']}"
+    if kind == "transcript_span":
+        t_start_ms = int(round(float(locator["t_start"]) * 1000))
+        t_end_ms = int(round(float(locator["t_end"]) * 1000))
+        return f"{locator['segment_id']}:{t_start_ms}-{t_end_ms}"
+    column = locator.get("column") or ""
+    return f"{locator['table']}/{locator['row_id']}/{column}"
+
+
+def make_citation_id(
+    source_kind: str,
+    source_id: str,
+    locator: Optional[CitationLocator] = None,
+) -> str:
+    """Build the one citation id for a cited span (SDD A.2, F.4 P1).
+
+    Kinds with a locator get ``{source_kind}:{source_id}#{locator_key}``, so two
+    spans of one document get two ids. Kinds without one get
+    ``{source_kind}:{source_id}``.
 
     Raises:
-        ContractViolationError: unknown source_kind or empty source_id.
+        ContractViolationError: unknown source_kind, empty source_id, or a
+        locator missing or present against LOCATOR_KIND_BY_SOURCE.
     """
     if source_kind not in SOURCE_KINDS:
         raise ContractViolationError(
@@ -306,7 +328,21 @@ def make_citation_id(source_kind: str, source_id: str) -> str:
         )
     if not isinstance(source_id, str) or not source_id:
         raise ContractViolationError(f"source_id={source_id!r}; expected a non-empty string")
-    return f"{source_kind}:{source_id}"
+
+    expected_kind = LOCATOR_KIND_BY_SOURCE.get(source_kind)
+    if expected_kind is None:
+        if locator is not None:
+            raise ContractViolationError(
+                f"locator={locator!r} given for source_kind={source_kind!r}; expected no locator"
+            )
+        return f"{source_kind}:{source_id}"
+
+    errors = _locator_errors(locator, source_kind, source_id, "locator")
+    if errors:
+        raise ContractViolationError(
+            f"cannot build citation_id for {source_kind}:{source_id}: {'; '.join(errors)}"
+        )
+    return f"{source_kind}:{source_id}#{_locator_key(locator)}"  # type: ignore[arg-type]
 
 
 class Derivation(TypedDict):
@@ -598,12 +634,13 @@ def citation_errors(citation: Any, prefix: str = "citation") -> List[str]:
     source_kind, source_id = citation["source_kind"], citation["source_id"]
     if source_kind not in SOURCE_KINDS:
         errors.append(f"{prefix}.source_kind={source_kind!r} not in contract")
+    locator_errors = _locator_errors(citation["locator"], source_kind, source_id, prefix)
     if not isinstance(source_id, str) or not source_id:
         errors.append(f"{prefix}.source_id must be a non-empty string")
-    elif source_kind in SOURCE_KINDS and citation["citation_id"] != f"{source_kind}:{source_id}":
-        errors.append(
-            f"{prefix}.citation_id={citation['citation_id']!r}; expected {source_kind}:{source_id}"
-        )
+    elif source_kind in SOURCE_KINDS and not locator_errors:
+        expected_id = make_citation_id(source_kind, source_id, citation["locator"])
+        if citation["citation_id"] != expected_id:
+            errors.append(f"{prefix}.citation_id={citation['citation_id']!r}; expected {expected_id}")
     for name in ("snippet", "observed_at"):
         if citation[name] is not None and not isinstance(citation[name], str):
             errors.append(f"{prefix}.{name} must be a string or null")
@@ -615,7 +652,7 @@ def citation_errors(citation: Any, prefix: str = "citation") -> List[str]:
         not isinstance(citation["score"], (int, float)) or isinstance(citation["score"], bool)
     ):
         errors.append(f"{prefix}.score must be a number or null")
-    errors.extend(_locator_errors(citation["locator"], source_kind, source_id, prefix))
+    errors.extend(locator_errors)
     return errors
 
 

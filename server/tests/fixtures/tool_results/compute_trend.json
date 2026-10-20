@@ -1,0 +1,42 @@
+{
+  "tool_id": "compute_trend",
+  "contract_version": "1.2",
+  "note": "Canned ToolResult bodies for the #51 stub tools. Synthetic data only.",
+  "cases": {
+    "ok": {
+      "ok": true,
+      "data": {
+        "analyte": "rbc",
+        "direction": "down",
+        "slope_per_day": -0.0048,
+        "n": 2,
+        "first": {
+          "value": 4.4,
+          "observed_at": "2026-05-03"
+        },
+        "last": {
+          "value": 3.9,
+          "observed_at": "2026-08-14"
+        },
+        "input_citation_ids": [
+          "lab:rbc:2026-05-03",
+          "lab:rbc:2026-08-14"
+        ]
+      },
+      "citations": [],
+      "error": null
+    },
+    "empty": {
+      "ok": true,
+      "data": {
+        "analyte": "rbc",
+        "direction": "unknown",
+        "n": 0,
+        "reason": "fewer than two cited observations",
+        "input_citation_ids": []
+      },
+      "citations": [],
+      "error": null
+    }
+  }
+}

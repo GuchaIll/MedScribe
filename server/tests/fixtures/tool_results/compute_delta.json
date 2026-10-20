@@ -1,0 +1,42 @@
+{
+  "tool_id": "compute_delta",
+  "contract_version": "1.2",
+  "note": "Canned ToolResult bodies for the #51 stub tools. Synthetic data only.",
+  "cases": {
+    "ok": {
+      "ok": true,
+      "data": {
+        "deltas": [
+          {
+            "fact_key": "rbc",
+            "absolute": -0.5,
+            "relative": -0.1136,
+            "prior": {
+              "value": 4.4,
+              "observed_at": "2026-05-03"
+            },
+            "current": {
+              "value": 3.9,
+              "observed_at": "2026-08-14"
+            },
+            "input_citation_ids": [
+              "lab:rbc:2026-05-03",
+              "lab:rbc:2026-08-14"
+            ]
+          }
+        ]
+      },
+      "citations": [],
+      "error": null
+    },
+    "empty": {
+      "ok": true,
+      "data": {
+        "deltas": [],
+        "reason": "no fact key present on both sides"
+      },
+      "citations": [],
+      "error": null
+    }
+  }
+}

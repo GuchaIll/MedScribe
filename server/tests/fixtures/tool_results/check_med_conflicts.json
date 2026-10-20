@@ -1,0 +1,49 @@
+{
+  "tool_id": "check_med_conflicts",
+  "contract_version": "1.2",
+  "note": "Canned ToolResult bodies for the #51 stub tools. Synthetic data only.",
+  "cases": {
+    "ok": {
+      "ok": true,
+      "data": {
+        "alerts": [
+          {
+            "type": "allergy",
+            "severity": "critical",
+            "medication": "amoxicillin",
+            "message": "cross-reactivity with documented penicillin allergy"
+          }
+        ],
+        "not_covered": [],
+        "risk_level": "critical"
+      },
+      "citations": [],
+      "error": null
+    },
+    "empty": {
+      "ok": true,
+      "data": {
+        "alerts": [],
+        "not_covered": [],
+        "risk_level": "low"
+      },
+      "citations": [],
+      "error": null
+    },
+    "not_covered": {
+      "ok": false,
+      "data": {
+        "alerts": [],
+        "not_covered": [
+          {
+            "medication": "obeticholic acid",
+            "reason": "not in the interaction table"
+          }
+        ],
+        "risk_level": "unknown"
+      },
+      "citations": [],
+      "error": "not_covered"
+    }
+  }
+}

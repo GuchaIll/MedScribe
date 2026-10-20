@@ -1,0 +1,57 @@
+{
+  "tool_id": "ingest_delta",
+  "contract_version": "1.2",
+  "note": "Canned ToolResult bodies for the #51 stub tools. Synthetic data only.",
+  "cases": {
+    "ok": {
+      "ok": true,
+      "data": {
+        "document_id": "doc_12",
+        "pages_ingested": 9,
+        "new_candidates": 6,
+        "cache_hit": false
+      },
+      "citations": [],
+      "error": null
+    },
+    "empty": {
+      "ok": true,
+      "data": {
+        "document_id": "doc_12",
+        "pages_ingested": 0,
+        "new_candidates": 0,
+        "reason": "content hash unchanged",
+        "cache_hit": true
+      },
+      "citations": [],
+      "error": null
+    },
+    "no_source": {
+      "ok": false,
+      "data": {
+        "reason": "document not found in the artifact index"
+      },
+      "citations": [],
+      "error": "no_source"
+    },
+    "in_flight_doc": {
+      "ok": true,
+      "data": {
+        "document_id": "doc_12",
+        "pages_ingested": 3,
+        "in_flight": [
+          {
+            "document_id": "doc_12",
+            "state": "processing",
+            "pages_done": 3,
+            "pages_total": 9,
+            "eta_ms": 4200
+          }
+        ],
+        "partial": true
+      },
+      "citations": [],
+      "error": null
+    }
+  }
+}
