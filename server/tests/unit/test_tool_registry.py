@@ -42,13 +42,16 @@ def ok_outcome(call):
         ok=True,
         data={"hits": 1, "scope_seen": call.scope.as_dict(), "arg_keys": sorted(call.args)},
         citations=[{
-            "source_kind": "prior_docs",
-            "source_id": "chunk:doc_1:p1:c1",
+            "source_kind": "document",
+            "source_id": "doc_1",
             "snippet": "text",
             "observed_at": None,
             "received_at": "2026-09-16T09:00:00Z",
             "evidence_state": "materialized",
-            "locator": {"page": 1, "char_start": 0, "char_end": 4},
+            "locator": {
+                "kind": "document_span", "doc_id": "doc_1", "chunk_id": "chunk:doc_1:p1:c1",
+                "page": 1, "char_start": 0, "char_end": 4,
+            },
             "score": 0.5,
         }],
     )
@@ -78,7 +81,7 @@ class TestScope:
         assert ToolScope(session_id="ses_1").as_dict() == {"session_id": "ses_1"}
 
     def test_missing_reports_absent_keys(self, scope):
-        assert scope.missing(["patient_id", "doctor_id"]) == ["doctor_id"]
+        assert scope.missing(["patient_id", "clinician_id"]) == ["clinician_id"]
 
 
 class TestRegistration:
@@ -205,7 +208,7 @@ class TestReceiptsAndSpans:
         receipt = result["receipt"]
         assert receipt["contract_version"] == RUNTIME_CONTRACT_VERSION
         assert receipt["session_id"] == "ses_1"
-        assert receipt["source_refs"] == ["chunk:doc_1:p1:c1"]
+        assert receipt["source_refs"] == ["doc_1"]
         assert validate_tool_result(dict(result)) == []
 
     def test_receipt_carries_no_argument_values(self, registry):
@@ -261,6 +264,55 @@ class TestReceiptsAndSpans:
         assert registry.call(
             "retrieve_docs", {}, caller="fixed_executor", caller_ref="wf",
         )["ok"] is True
+
+
+def _doc_citation(chunk_id, page, char_start, char_end, **overrides):
+    citation = {
+        "source_kind": "document",
+        "source_id": "doc_1",
+        "snippet": None,
+        "observed_at": None,
+        "received_at": "2026-09-16T09:00:00Z",
+        "evidence_state": "materialized",
+        "locator": {
+            "kind": "document_span", "doc_id": "doc_1", "chunk_id": chunk_id,
+            "page": page, "char_start": char_start, "char_end": char_end,
+        },
+        "score": None,
+    }
+    citation.update(overrides)
+    return citation
+
+
+class TestCitationIds:
+    """The registry is the one caller of make_citation_id() (SDD A.2, F.4 P1)."""
+
+    def test_two_spans_of_one_document_get_two_ids(self, registry):
+        registry.register("retrieve_docs", lambda call: ToolOutcome(ok=True, citations=[
+            _doc_citation("c1", 1, 0, 40),
+            _doc_citation("c7", 3, 10, 52),
+        ]))
+        result = registry.call("retrieve_docs", {}, caller="fixed_executor", caller_ref="wf")
+        assert [c["citation_id"] for c in result["citations"]] == [
+            "document:doc_1#c1:0-40",
+            "document:doc_1#c7:10-52",
+        ]
+        assert result["receipt"]["source_refs"] == ["doc_1", "doc_1"]
+
+    def test_handler_supplied_id_that_disagrees_is_refused(self, registry):
+        registry.register("retrieve_docs", lambda call: ToolOutcome(ok=True, citations=[
+            _doc_citation("c1", 1, 0, 40, citation_id="document:doc_1"),
+        ]))
+        with pytest.raises(ToolResultContractError, match="citation_id"):
+            registry.call("retrieve_docs", {}, caller="fixed_executor", caller_ref="wf")
+
+    def test_citation_the_builder_rejects_fails_the_contract(self, registry, caplog):
+        bad = _doc_citation("c1", 1, 0, 40)
+        bad["locator"] = {"page": 1, "char_start": 0, "char_end": 40}  # untyped, pre-1.2 shape
+        registry.register("retrieve_docs", lambda call: ToolOutcome(ok=True, citations=[bad]))
+        with pytest.raises(ToolResultContractError, match="citation_id"):
+            registry.call("retrieve_docs", {}, caller="fixed_executor", caller_ref="wf")
+        assert "citation id not built" in caplog.text
 
 
 class TestFailurePaths:

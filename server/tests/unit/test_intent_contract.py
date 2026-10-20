@@ -206,7 +206,7 @@ def _citation(source_kind="observation", source_id="obs-123", **overrides):
         "session_transcript": {"kind": "transcript_span", "segment_id": source_id, "t_start": 1.0, "t_end": 2.5},
     }
     citation = {
-        "citation_id": f"{source_kind}:{source_id}",
+        "citation_id": None,
         "source_kind": source_kind,
         "source_id": source_id,
         "snippet": None,
@@ -217,7 +217,19 @@ def _citation(source_kind="observation", source_id="obs-123", **overrides):
         "score": None,
     }
     citation.update(overrides)
+    if "citation_id" not in overrides:
+        try:
+            citation["citation_id"] = make_citation_id(source_kind, source_id, citation["locator"])
+        except ContractViolationError:
+            # invalid kinds and locators are what some cases test; the validator
+            # reports those and skips the id check
+            citation["citation_id"] = f"{source_kind}:{source_id}"
     return citation
+
+
+# Citation ids of the default observation citations (SDD A.2 RowRef locator key).
+OBS_123 = "observation:obs-123#observations/obs-123/value"
+OBS_9 = "observation:obs-9#observations/obs-9/value"
 
 
 def _fact(fact_key, fact_id, status="active"):
@@ -297,7 +309,7 @@ def _receipted(result, invocation_id, args_hash):
     return {**result, "receipt": receipt}
 
 
-def _claim(claim_id="c-1", citation_ids=("observation:obs-123",), derivation=None):
+def _claim(claim_id="c-1", citation_ids=(OBS_123,), derivation=None):
     return {
         "claim_id": claim_id,
         "text": "RBC was 4.6",
@@ -790,7 +802,7 @@ class TestPlanRequest:
         ref = make_evidence_ref(bundle)
         assert ref.bundle_id == "bundle-1"
         assert ref.receipt_ids == ("invoke-1",)
-        assert ref.citation_ids == ("observation:obs-123",)
+        assert ref.citation_ids == (OBS_123,)
 
         # The bundle keeps growing; the ref does not.
         append_result(bundle, _receipted(_tool_result(citations=[_citation(source_id="obs-9")]), "invoke-2", "b" * 64))
@@ -863,7 +875,7 @@ class TestAssistAnswer:
     def test_cited_is_the_closure_of_claims_and_derivations(self):
         derivation = {
             "operation": "compute_delta",
-            "input_citation_ids": ["observation:obs-123", "observation:obs-9"],
+            "input_citation_ids": [OBS_123, OBS_9],
             "receipt_id": "invoke-3",
         }
         claims = [_claim(derivation=derivation)]
@@ -871,12 +883,12 @@ class TestAssistAnswer:
         assert validate_assist_answer(_answer(claims=claims, cited=cited)) == []
 
         errors = validate_assist_answer(_answer(claims=claims, cited=[_citation()]))
-        assert any("missing=['observation:obs-9']" in e for e in errors), errors
+        assert any(f"missing=['{OBS_9}']" in e for e in errors), errors
 
     @pytest.mark.parametrize(
         "overrides, fragment",
         [
-            ({"cited": [_citation(), _citation(source_id="obs-extra")]}, "extra=['observation:obs-extra']"),
+            ({"cited": [_citation(), _citation(source_id="obs-extra")]}, "extra=['observation:obs-extra#observations/obs-extra/value']"),
             ({"cited": [_citation(), _citation()]}, "more than once"),
             ({"status": "done"}, "answer.status"),
             ({"status": "answered", "grounding": {"claims_checked": 1, "unsupported_claim_ids": ["c-1"], "verdict": "refuse"}}, "verdict 'render'"),
@@ -1170,12 +1182,30 @@ class TestSharedToolRegistry:
             "visit": "row_ref",
         }
 
-    def test_citation_id_is_stable_per_source(self):
-        assert make_citation_id("document", "doc-7") == "document:doc-7"
+    def test_citation_id_names_the_span_not_the_source(self):
+        page_1 = {"kind": "document_span", "doc_id": "doc-7", "chunk_id": "c1", "page": 1, "char_start": 0, "char_end": 40}
+        page_2 = {**page_1, "chunk_id": "c2", "page": 2}
+        assert make_citation_id("document", "doc-7", page_1) == "document:doc-7#c1:0-40"
+        assert make_citation_id("document", "doc-7", page_1) != make_citation_id("document", "doc-7", page_2)
+        segment = {"kind": "transcript_span", "segment_id": "seg-1", "t_start": 1.0, "t_end": 2.5}
+        assert make_citation_id("session_transcript", "seg-1", segment) == "session_transcript:seg-1#seg-1:1000-2500"
+        row = {"kind": "row_ref", "table": "visits", "row_id": "v-1", "column": None}
+        assert make_citation_id("visit", "v-1", row) == "visit:v-1#visits/v-1/"
+        assert make_citation_id("patient_snapshot", "rec-1#v4") == "patient_snapshot:rec-1#v4"
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("uploaded_doc", "doc-7", None),
+            ("document", "", None),
+            ("document", "doc-7", None),
+            ("document", "doc-7", {"kind": "document_span", "doc_id": "doc-8", "chunk_id": "c", "page": 1, "char_start": 0, "char_end": 4}),
+            ("patient_snapshot", "rec-1", {"kind": "row_ref", "table": "t", "row_id": "rec-1", "column": None}),
+        ],
+    )
+    def test_citation_id_builder_rejects_bad_input(self, args):
         with pytest.raises(ContractViolationError):
-            make_citation_id("uploaded_doc", "doc-7")
-        with pytest.raises(ContractViolationError):
-            make_citation_id("document", "")
+            make_citation_id(*args)
 
     @pytest.mark.parametrize("source_kind", ["observation", "visit", "document", "session_transcript", "session_draft"])
     def test_each_source_kind_takes_its_locator(self, source_kind):
@@ -1271,7 +1301,7 @@ class TestEvidenceBundle:
             _tool_result(citations=[_citation(), _citation(source_id="obs-9")]), "invoke-2", "b" * 64
         )
         assert append_result(bundle, second) is True
-        assert list(bundle["citations"]) == ["observation:obs-123", "observation:obs-9"]
+        assert list(bundle["citations"]) == [OBS_123, OBS_9]
         assert bundle["sources_checked"] == ["retrieve_structured:" + "a" * 64, "retrieve_structured:" + "b" * 64]
         assert len(bundle["results"]) == 2
 

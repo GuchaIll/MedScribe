@@ -127,7 +127,7 @@ class TestStubCalls:
         stubs.set_case("retrieve_structured", "chart_vs_session_conflict")
         result = registry.call("retrieve_structured", {}, caller="fixed_executor", caller_ref="wf")
         kinds = {citation["source_kind"] for citation in result["citations"]}
-        assert kinds == {"prior_labs", "session_transcript"}
+        assert kinds == {"observation", "session_transcript"}
         assert result["data"]["conflict"]["resolution"] == "unresolved"
 
     def test_a_case_a_tool_does_not_define_falls_back_to_ok(self, registry):

@@ -24,23 +24,31 @@
       },
       "citations": [
         {
-          "source_kind": "prior_labs",
+          "source_kind": "observation",
           "source_id": "lab:rbc:2026-08-14",
           "snippet": "RBC 3.9 x10^12/L",
           "observed_at": "2026-08-14",
           "received_at": "2026-08-14T11:20:00Z",
           "evidence_state": "authorized",
-          "locator": null,
+          "locator": {
+            "kind": "row_ref",
+            "table": "observations",
+            "row_id": "lab:rbc:2026-08-14",
+            "column": "value"
+          },
           "score": 0.82
         },
         {
-          "source_kind": "uploaded_doc",
-          "source_id": "chunk:doc_7:p2:c3",
+          "source_kind": "document",
+          "source_id": "doc_7",
           "snippet": "Hemoglobin 11.2 g/dL (low)",
           "observed_at": "2026-09-02",
           "received_at": "2026-09-15T08:41:00Z",
           "evidence_state": "materialized",
           "locator": {
+            "kind": "document_span",
+            "doc_id": "doc_7",
+            "chunk_id": "chunk:doc_7:p2:c3",
             "page": 2,
             "char_start": 412,
             "char_end": 441
@@ -84,13 +92,16 @@
       },
       "citations": [
         {
-          "source_kind": "uploaded_doc",
-          "source_id": "doc:doc_12",
+          "source_kind": "document",
+          "source_id": "doc_12",
           "snippet": "referral letter, pages 1-3 of 9 parsed",
           "observed_at": null,
           "received_at": "2026-09-16T09:10:00Z",
           "evidence_state": "received",
           "locator": {
+            "kind": "document_span",
+            "doc_id": "doc_12",
+            "chunk_id": "chunk:doc_12:p1:c1",
             "page": 1,
             "char_start": 0,
             "char_end": 0
@@ -125,13 +136,18 @@
       },
       "citations": [
         {
-          "source_kind": "prior_labs",
+          "source_kind": "observation",
           "source_id": "fact:med:metformin",
           "snippet": "Metformin 1000 mg BID",
           "observed_at": "2026-06-02",
           "received_at": "2026-06-02T14:00:00Z",
           "evidence_state": "authorized",
-          "locator": null,
+          "locator": {
+            "kind": "row_ref",
+            "table": "observations",
+            "row_id": "fact:med:metformin",
+            "column": "value"
+          },
           "score": 0.82
         },
         {
@@ -142,6 +158,7 @@
           "received_at": "2026-09-16T09:12:00Z",
           "evidence_state": "materialized",
           "locator": {
+            "kind": "transcript_span",
             "segment_id": "seg:114",
             "t_start": 812.4,
             "t_end": 819.1

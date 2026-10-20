@@ -32,7 +32,9 @@ from ..tool_contracts import (
     SCOPE_ARG_KEYS,
     TOOL_SPECS,
     ToolInvocationReceipt,
+    ContractViolationError,
     ToolResult,
+    make_citation_id,
     validate_model_tool_args,
     validate_tool_result,
 )
@@ -78,7 +80,7 @@ class ToolScope:
     session_id: str
     patient_id: Optional[str] = None
     tenant_id: Optional[str] = None
-    doctor_id: Optional[str] = None
+    clinician_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         if not self.session_id or not isinstance(self.session_id, str):
@@ -94,7 +96,7 @@ class ToolScope:
                 ("session_id", self.session_id),
                 ("patient_id", self.patient_id),
                 ("tenant_id", self.tenant_id),
-                ("doctor_id", self.doctor_id),
+                ("clinician_id", self.clinician_id),
             )
             if value
         }
@@ -374,6 +376,7 @@ class ToolRegistry:
                     )
 
         latency_ms = (time.perf_counter() - started) * 1000.0
+        outcome.citations = self._stamp_citation_ids(tool_id, invocation_id, outcome.citations)
         receipt = self._build_receipt(
             tool=tool,
             invocation_id=invocation_id,
@@ -426,6 +429,40 @@ class ToolRegistry:
             len(outcome.citations), latency_ms, invocation_id,
         )
         return result
+
+    # -- citation ids ---------------------------------------------------------
+
+    @staticmethod
+    def _stamp_citation_ids(
+        tool_id: str,
+        invocation_id: str,
+        citations: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Give each citation the id from make_citation_id(), the one builder (SDD A.2).
+
+        Handlers do not build citation ids. A citation the builder rejects is
+        left without one, so validate_tool_result reports the real violation.
+        """
+        stamped: List[Dict[str, Any]] = []
+        for index, citation in enumerate(citations):
+            if not isinstance(citation, dict) or "citation_id" in citation:
+                stamped.append(citation)
+                continue
+            try:
+                citation_id = make_citation_id(
+                    citation.get("source_kind"),  # type: ignore[arg-type]
+                    citation.get("source_id"),  # type: ignore[arg-type]
+                    citation.get("locator"),
+                )
+            except ContractViolationError as exc:
+                logger.warning(
+                    "citation id not built: tool_id=%s invocation_id=%s index=%d error=%s",
+                    tool_id, invocation_id, index, exc,
+                )
+                stamped.append(citation)
+                continue
+            stamped.append({"citation_id": citation_id, **citation})
+        return stamped
 
     # -- receipts, trace log, spans, metrics --------------------------------
 

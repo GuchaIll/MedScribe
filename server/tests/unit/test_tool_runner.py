@@ -23,13 +23,16 @@ from app.agents.tools.runner import (
 
 def citation():
     return {
-        "source_kind": "prior_docs",
-        "source_id": "chunk:doc_1:p1:c1",
+        "source_kind": "document",
+        "source_id": "doc_1",
         "snippet": None,
         "observed_at": None,
         "received_at": "2026-09-16T09:00:00Z",
         "evidence_state": "materialized",
-        "locator": {"page": 1, "char_start": 0, "char_end": 1},
+        "locator": {
+                "kind": "document_span", "doc_id": "doc_1", "chunk_id": "chunk:doc_1:p1:c1",
+                "page": 1, "char_start": 0, "char_end": 1,
+            },
         "score": None,
     }
 
