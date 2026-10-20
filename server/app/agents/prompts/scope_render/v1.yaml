@@ -1,0 +1,27 @@
+id: scope_render
+version: 1
+model_role: router
+template: |
+  [PLACEHOLDER — scope_render v1]
+
+  Given the physician's underspecified ask and the candidate scope choices
+  below, produce a brief clarification card that lets the physician select
+  the intended scope.  Do not add, drop, or reorder candidates.
+
+  Ask: {{ ask_text }}
+  Scope candidates: {{ scope_candidates_json }}
+
+  Respond with valid JSON matching the ScopeRenderOutput schema.
+input_schema:
+  type: object
+  required: [ask_text, scope_candidates_json]
+  properties:
+    ask_text:
+      type: string
+    scope_candidates_json:
+      type: string
+output_schema:
+  type: object
+  description: ScopeRenderOutput — card text + ordered candidate ids
+changelog: |
+  v1 (2026-09-16): initial placeholder; typed schema lands with scope library (#83)

@@ -1,0 +1,27 @@
+id: slot_extract
+version: 1
+model_role: router
+template: |
+  [PLACEHOLDER — slot_extract v1]
+
+  Extract the physician's intent from the following utterance into structured
+  TaskSlots: entity_hints, time_range, evidence_class, and sub_asks with
+  calibrated class scores.
+
+  Utterance: {{ utterance }}
+  Patient context: {{ patient_context_summary }}
+
+  Respond with valid JSON matching the TaskSlots schema.
+input_schema:
+  type: object
+  required: [utterance, patient_context_summary]
+  properties:
+    utterance:
+      type: string
+    patient_context_summary:
+      type: string
+output_schema:
+  type: object
+  description: TaskSlots — see intent/schemas.py
+changelog: |
+  v1 (2026-09-16): initial placeholder; typed schema lands in Phase 1A (#55)

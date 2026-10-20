@@ -1,0 +1,37 @@
+id: judge
+version: 1
+model_role: judge
+template: |
+  [PLACEHOLDER — judge v1]
+
+  You are a grounding judge from a different model family than the synthesis
+  model.  Evaluate the candidate answer against the source evidence using the
+  rubric below.  Paraphrase only; do not add information.
+
+  Rubric:
+    - faithfulness: every claim is supported by a cited source
+    - completeness: the answer addresses all parts of the question
+    - clinical_relevance: the answer is clinically actionable
+    - concision: the answer contains no redundant content
+
+  Question: {{ question }}
+  Candidate answer: {{ candidate_answer }}
+  Source evidence: {{ source_evidence_json }}
+
+  Respond with valid JSON matching the JudgeOutput schema
+  (per-rubric scores 0–1, overall pass/fail, failure reasons).
+input_schema:
+  type: object
+  required: [question, candidate_answer, source_evidence_json]
+  properties:
+    question:
+      type: string
+    candidate_answer:
+      type: string
+    source_evidence_json:
+      type: string
+output_schema:
+  type: object
+  description: JudgeOutput — rubric scores + pass/fail + failure reasons
+changelog: |
+  v1 (2026-09-16): initial placeholder; rubric weights tuned in Phase 2b (#57)

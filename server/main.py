@@ -199,9 +199,17 @@ async def lifespan(app: FastAPI):
     )
     log.info("=" * 60)
 
+    from app.logging import configure_trace_sink, get_trace_sink
+    configure_trace_sink()
+    sink = get_trace_sink()
+    if sink:
+        log.info("  [OK]  Trace sink        — JSONL trace sink active")
+
     yield  # application runs here
 
     log.info("  MedScribe API — shutdown")
+    if sink:
+        sink.close()
 
 
 # ---------------------------------------------------------------------------

@@ -260,3 +260,15 @@ def performance_tracked(
         return sync_wrapper if not hasattr(func, "__code__") else sync_wrapper
 
     return decorator
+
+
+# ---------------------------------------------------------------------------
+# Agent-runtime Prometheus metrics (#48)
+# These are registered here so every later phase imports from one module.
+# Actual counter increments land per-node in Phase 1A.
+# ---------------------------------------------------------------------------
+
+def get_agent_metrics():
+    """Return the process-wide PrometheusMetrics singleton from agents/tracing."""
+    from .agents.tracing.sinks import get_metrics
+    return get_metrics()
