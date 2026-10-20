@@ -1,0 +1,22 @@
+{"id": "addr-001", "speaker": "Clinician", "channel": "explicit_ui", "text": "What was their last A1c?", "expected_addressee": "copilot", "task_subtype_if_copilot": "factoid"}
+{"id": "addr-002", "speaker": "Clinician", "channel": "explicit_ui", "text": "How have the labs looked?", "expected_addressee": "copilot", "task_subtype_if_copilot": "factoid"}
+{"id": "addr-003", "speaker": "Clinician", "channel": "explicit_ui", "text": "Write me a SOAP note.", "expected_addressee": "copilot", "task_subtype_if_copilot": "note"}
+{"id": "addr-004", "speaker": "Clinician", "channel": "explicit_ui", "text": "Compare their sodium levels.", "expected_addressee": "copilot", "task_subtype_if_copilot": "compare"}
+{"id": "addr-005", "speaker": "Clinician", "channel": "explicit_ui", "text": "Any drug interactions with metformin?", "expected_addressee": "copilot", "task_subtype_if_copilot": "safety"}
+{"id": "addr-006", "speaker": "Clinician", "channel": "ambient_transcript", "text": "How are you feeling today?", "expected_addressee": "patient"}
+{"id": "addr-007", "speaker": "Clinician", "channel": "ambient_transcript", "text": "Are you experiencing any pain?", "expected_addressee": "patient"}
+{"id": "addr-008", "speaker": "Clinician", "channel": "ambient_transcript", "text": "Let me check your blood pressure.", "expected_addressee": "patient"}
+{"id": "addr-009", "speaker": "Clinician", "channel": "ambient_transcript", "text": "What was your last blood pressure reading?", "expected_addressee": "patient"}
+{"id": "addr-010", "speaker": "Clinician", "channel": "ambient_transcript", "text": "Have you been taking your medications?", "expected_addressee": "patient"}
+{"id": "addr-011", "speaker": "Patient", "channel": "ambient_transcript", "text": "My knee has been hurting a lot.", "expected_addressee": "patient"}
+{"id": "addr-012", "speaker": "Patient", "channel": "ambient_transcript", "text": "I've been feeling really tired.", "expected_addressee": "patient"}
+{"id": "addr-013", "speaker": "Patient", "channel": "ambient_transcript", "text": "Is this medicine safe to take with ibuprofen?", "expected_addressee": "patient"}
+{"id": "addr-014", "speaker": "Clinician", "channel": "ambient_transcript", "text": "MedScribe, pull up the last CBC.", "expected_addressee": "unknown"}
+{"id": "addr-015", "speaker": "Clinician", "channel": "ambient_transcript", "text": "Can you check their recent labs?", "expected_addressee": "unknown"}
+{"id": "addr-016", "speaker": "Clinician", "channel": "explicit_ui", "text": "Show me the trend in their eGFR.", "expected_addressee": "copilot", "task_subtype_if_copilot": "trajectory"}
+{"id": "addr-017", "speaker": "Clinician", "channel": "explicit_ui", "text": "Check for penicillin allergy.", "expected_addressee": "copilot", "task_subtype_if_copilot": "factoid"}
+{"id": "addr-018", "speaker": "Clinician", "channel": "explicit_ui", "text": "End the visit and save the record.", "expected_addressee": "copilot", "task_subtype_if_copilot": "session_control"}
+{"id": "addr-019", "speaker": "Clinician", "channel": "explicit_ui", "text": "Hmm, what changed since last time?", "expected_addressee": "copilot", "task_subtype_if_copilot": "unknown"}
+{"id": "addr-020", "speaker": "Patient", "channel": "ambient_transcript", "text": "What was your last blood pressure reading?", "expected_addressee": "patient"}
+{"id": "addr-021", "speaker": "Patient", "channel": "ambient_transcript", "text": "Do I need to fast before the blood test?", "expected_addressee": "patient"}
+{"id": "addr-022", "speaker": "Patient", "channel": "ambient_transcript", "text": "Will this affect my other medications?", "expected_addressee": "patient"}

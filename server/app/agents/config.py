@@ -1,22 +1,29 @@
 """
 AgentContext — Dependency Injection for LangGraph Nodes.
 
-Follows Anthropic's agent pattern: nodes receive capabilities via context,
-they don't reach out and grab their own dependencies. This makes nodes
-testable, composable, and decoupled from infrastructure.
+Contract 1.2 provisional tuning constants (plan §18.6, §18.9; contract §12.9).
+Tests and executor_contract import these; do not duplicate them elsewhere.
 
-Usage:
-    ctx = AgentContext(
-        patient_service=my_patient_svc,
-        clinical_engine=my_engine,
-        embedding_service=my_embed_svc,
-        llm_factory=lambda: LLMClient(),
-        db_session_factory=SessionLocal,
-    )
-    graph = build_graph(ctx)
+  SUB_ASK_MIN_CONFIDENCE       — minimum class score to accept a sub-ask evidence class
+  MAX_FANOUT_WORKFLOWS         — fan-out dispatch cap; above this, clarify(narrow) fires
+  REFERENCE_RESOLUTION_WAIT_MS — max wait for reference resolution to name the documents an ask needs
+  RECHECK_INTERVAL_MS          — barrier re-read interval when no NOTIFY arrives
+  POST_BARRIER_RESERVE_MS      — time kept after the barrier for synthesis and grounding;
+                                 the barrier waits until deadline_at minus this reserve
+                                 (SDD §9.4 item 2; replaces the fixed 20 s materialization wait)
 """
 
 from __future__ import annotations
+
+# ---------------------------------------------------------------------------
+# Contract 1.2 provisional tuning constants
+# ---------------------------------------------------------------------------
+
+SUB_ASK_MIN_CONFIDENCE: float = 0.75
+MAX_FANOUT_WORKFLOWS: int = 3
+REFERENCE_RESOLUTION_WAIT_MS: int = 3_000
+RECHECK_INTERVAL_MS: int = 1_000
+POST_BARRIER_RESERVE_MS: int = 3_300
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
