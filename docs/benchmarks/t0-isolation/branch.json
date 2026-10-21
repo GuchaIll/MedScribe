@@ -1,0 +1,83 @@
+{
+  "label": "branch",
+  "base_url": "http://localhost:3092",
+  "config": {
+    "base_url": "http://localhost:3092",
+    "label": "branch",
+    "out": "docs/benchmarks/t0-isolation/branch.json",
+    "duration_s": 60,
+    "transcribe_rps": 2,
+    "assistant_rps": 1,
+    "ingest_lead_s": 2,
+    "pages": 8,
+    "patient_id": "probe-patient",
+    "question": "What medications is the patient currently taking?"
+  },
+  "idle": {
+    "transcribe": {
+      "n": 120,
+      "p50_ms": 7.3,
+      "p95_ms": 10.6,
+      "p99_ms": 12.1,
+      "max_ms": 12.5,
+      "stdev_ms": 1.7,
+      "errors": {}
+    },
+    "assistant": {
+      "n": 60,
+      "p50_ms": 371.6,
+      "p95_ms": 657.8,
+      "p99_ms": 720.9,
+      "max_ms": 740.9,
+      "stdev_ms": 132.4,
+      "errors": {}
+    }
+  },
+  "ingesting": {
+    "transcribe": {
+      "n": 120,
+      "p50_ms": 3.6,
+      "p95_ms": 5.5,
+      "p99_ms": 17.9,
+      "max_ms": 72.7,
+      "stdev_ms": 6.5,
+      "errors": {}
+    },
+    "assistant": {
+      "n": 60,
+      "p50_ms": 521.9,
+      "p95_ms": 856.6,
+      "p99_ms": 923.4,
+      "max_ms": 1064.8,
+      "stdev_ms": 184.2,
+      "errors": {}
+    },
+    "ingest": {
+      "uploads_completed": 1,
+      "uploads": [
+        {
+          "status": 200,
+          "ms": 51160,
+          "offload_header": "process",
+          "file_errors": []
+        },
+        {
+          "status": 200,
+          "ms": 51409,
+          "offload_header": "process",
+          "file_errors": []
+        }
+      ],
+      "offload_headers": {
+        "process": 1
+      },
+      "upload_in_flight_at_end": true
+    }
+  },
+  "verdict": {
+    "threshold": 1.2,
+    "transcribe_p99_ratio": 1.48,
+    "assistant_p95_ratio": 1.3,
+    "pass": false
+  }
+}
