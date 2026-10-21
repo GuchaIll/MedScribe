@@ -169,6 +169,104 @@ Do not create a new state model. Reuse what exists:
 Logging rules (AGENTS.md): log ids, counts, sizes, durations. Never log
 transcript text, document text, extracted values, or the Groq key.
 
+## As built (updated during implementation)
+
+Changes from the design above, and why:
+
+- **Prerequisite 1 (Alembic heads)** is handled by PR #99 (`fix/alembic-two-heads`,
+  005 revises 004). Not folded in here. The probe ran with
+  `alembic upgrade heads` so it did not depend on #99.
+- **Prerequisite 2 (venv).** The main `.venv` is Python 3.14, and `torch==2.2.0`
+  and `numpy==1.26.4` have no 3.14 wheels. Tests ran in a Python 3.12 venv built
+  from `requirements.docker.txt` minus torch/sentence-transformers/weasyprint,
+  with `pydantic` relaxed to `>=2.7` (`langchain-core==0.2.43` needs it; the
+  Docker pin `pydantic==2.5.3` conflicts) plus `pdfplumber`. `pdfplumber` is
+  also missing from `requirements.docker.txt`, so in Docker every PDF goes
+  through the image path (poppler + RapidOCR). Not changed here.
+- **`CompileJob` has five fields, not two.** The child rebuilds the caller's
+  `WorkflowEngine`, so it needs the caller's `enable_checkpointing` and
+  `enable_interrupts` (the two compile routes differ), and `use_db` because the
+  request's DB session cannot cross the process boundary. No engine is cached in
+  the child: `create_default_context(db_session=...)` binds the session at build
+  time, so a cached engine would hold a stale session.
+- **`execute_async` returns `state` merged with `offload.COMPILE_RESULT_KEYS`**
+  (`clinical_note`, `structured_record`, `clinical_suggestions`,
+  `validation_report`, `message`, `flags`), not the full child state. Every
+  caller reads only these keys.
+- **The post-OCR summary LLM call moved off the loop too.**
+  `_build_document_agent_summary` calls `LLMClient.generate_response`
+  synchronously after OCR. Left in place it would still stall the loop for one
+  Groq round trip per file. It now runs in `asyncio.to_thread` (I/O-bound, so a
+  thread is enough).
+- **Upload checks the OCR pool once, up front.** If the pool is down the whole
+  request returns 503 before any file is stored. Per-file failures keep the
+  existing per-file shape (`error` key only, no new `status` key):
+  `error = "ocr_timeout"` and `error = "empty_file"`.
+- **`/internal/pipeline` keeps its contract with the Go proxy:** any failure,
+  including 503/504 causes, still returns 200 with `status = "failed"`. The
+  public `/api/session/{id}/pipeline` returns 503 / 504. Both set
+  `X-MedScribe-Offload` on success.
+- **Uploaded filenames are no longer logged** (they can carry patient names);
+  logs use the stored uuid name as `doc_id`.
+- **Step 10 (k8s) does not apply as written.** `infra/k8s/services/api` is the
+  Go gateway (`--mode=gateway`, 512Mi limit). The Python API is reached at
+  `python-backend:3001` and has no manifest in `infra/k8s`. Added a note to
+  `infra/k8s/README.md` with the process count and measured child RSS instead.
+- **Thread fallback also enforces the job timeout.**
+- **Found by the probe: every spawn child died at import.** `server/main.py`
+  inserted `server/app` at `sys.path[0]`. Spawn children inherit `sys.path`,
+  and in a fresh interpreter `server/app/logging.py` shadows the stdlib
+  `logging` (`'logging' is not a package`). The pool broke on every job, and the
+  fallback ran OCR in a thread, as designed and visibly
+  (`X-MedScribe-Offload: thread_fallback`), which still stalled the loop. Unit
+  tests missed it because they never import `main.py`. Nothing imports from
+  `server/app` by bare name, so the insert is removed. Regression test:
+  `test_child_starts_from_process_that_imported_main`.
+- **Found by the probe: `/assistant` blocked the loop itself.** The route is
+  `async def` but calls the sync `AssistantService.ask_question` (embedding +
+  LLM) inline. Under CPU contention from OCR each call grew past 1 s, and at
+  1 rps open-loop the loop never drained, so every session queued behind it
+  (measured: `GET /` waited up to 7 s, `/assistant` 0.8 s -> 27 s). With
+  `/assistant` excluded, nothing stalled during an upload. It now runs in
+  `asyncio.to_thread`. `get_embedding_service(db)` still runs on the loop; its
+  first call loads the model (about 15 s, once per process). The probe warms it
+  first. Left for a follow-up.
+- **Found by the probe: CPU oversubscription.** ONNX Runtime sizes its
+  intra-op pool to every visible core (12 in the probe container) and ignores
+  the 4-CPU quota. The OCR child ran 48 threads next to the parent's torch
+  threads. New setting `OCR_CHILD_THREADS` (default 2, range 1-16) caps it via
+  `RapidOCR(intra_op_num_threads=..., inter_op_num_threads=1)`, set in the OCR
+  child initializer before the singleton is built. It also halved OCR time
+  (117 s -> 51 s for 8 pages).
+- **Exit criterion not met: 1.48x (`/transcribe` p99) and 1.30x (`/assistant`
+  p95) against 1.2x,** down from 204x / 205x on `main`. Details in
+  `docs/benchmarks/t0-isolation/README.md`. The threshold was not loosened.
+- **API process INFO logs were dropped.** `app.logging.configure_logging` was
+  never called, so only the last-resort WARNING handler was active and the
+  offload job logs (`session_id`, `doc_id`, `queue_wait_ms`, `run_ms`) never
+  appeared. The lifespan now calls it (console, `settings.logging.level`), and
+  the child initializer uses the same function. Visible change: `app.*` INFO
+  logs now print in the API process. `medscribe.startup` sets
+  `propagate = False` so its lines do not print twice.
+
+### Data-model proof (per field)
+
+| Model | Field | Read by | Interface crossed |
+| --- | --- | --- | --- |
+| `OcrJob` | `file_path`, `session_id`, `patient_id`, `patient_history`, `original_filename` | `_ocr_child` -> `process_document(**)` | parent -> OCR child (pickle) |
+| `CompileJob` | `state` | `_compile_child` -> `_stream_with_progress` | parent -> compile child |
+| | `thread_id` | `_compile_child` -> `_get_config` | parent -> compile child |
+| | `enable_checkpointing`, `enable_interrupts` | `_compile_child` -> `WorkflowEngine(...)` | parent -> compile child |
+| | `use_db` | `_compile_child` (opens `SessionLocal()` or not) | parent -> compile child |
+| `OffloadResult` | `value` | `upload_documents`, `execute_async` | offload -> route |
+| | `mode` | routes -> `X-MedScribe-Offload` header | offload -> HTTP caller |
+| `OffloadConfig` | `ocr_pool_workers`, `compile_pool_workers`, `ocr_job_timeout_s`, `compile_job_timeout_s` | `offload.start` -> `_Pool` | config -> lifespan |
+| | `ocr_child_threads` | `_init_child` -> `extractor.set_rapid_ocr_threads` | config -> OCR child |
+
+OCR result reuses `DocumentProcessingResult` unchanged (`pages` emptied before
+it crosses the pipe; no route reads it). Compile result reuses the `GraphState`
+key names. No new state model.
+
 ## Steps
 
 1. (Separate PR, prerequisite) Fix the Alembic two-heads problem; confirm `docker compose up api` starts.
