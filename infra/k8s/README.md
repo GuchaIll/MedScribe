@@ -14,9 +14,13 @@ process.
 | `medscribe-pipeline-worker` | `pipeline-worker` | `pipeline.trigger` | Python pipeline | Kafka lag (KEDA) |
 | `medscribe-ocr-worker` | `ocr-worker` | `ocr.jobs` | Python OCR | Kafka lag (KEDA) |
 | `medscribe-audio-worker` | `audio-worker` | `audio.ingest` | Modal speech worker | Kafka lag (KEDA) |
+| `medscribe-ingest-worker` | `python -m app.ingest worker --stage noop` | Postgres `ingest_tasks` (claim / lease / fence) | — | Fixed (KEDA on queue depth: #96) |
+| `medscribe-ingest-reconciler` (2 replicas) | `python -m app.ingest reconciler` | Postgres `ingest_tasks`, `ingest_outbox` | Kafka (outbox relay) | Fixed |
 
 All four run the same image (`ghcr.io/medscribe/api:<tag>`); only the `--mode`
-arg differs. Gateway exposes `/health`; workers expose `/health`, `/healthz`,
+arg differs. The two ingest Deployments run the Python server image
+(`ghcr.io/medscribe/server:<tag>`, built from `server/Dockerfile`) and expose
+`/metrics` on 8080. Gateway exposes `/health`; workers expose `/health`, `/healthz`,
 `/readyz`, and `/metrics`.
 
 ## Prerequisites

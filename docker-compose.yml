@@ -213,6 +213,39 @@ services:
       kafka:
         condition: service_healthy
 
+  # Ingest queue (T2, #92): batch worker on the no-op stage plus two
+  # reconciler replicas. Same image as api; migrations run in api.
+  ingest-worker:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.ingest", "worker", "--stage", "noop"]
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/medscribe
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+  ingest-reconciler:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.ingest", "reconciler"]
+    deploy:
+      replicas: 2
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/medscribe
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      api:
+        condition: service_started
+
   client:
     build:
       context: ./client/medscribe

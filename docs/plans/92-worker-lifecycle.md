@@ -329,6 +329,49 @@ and commit it.
 - [ ] Harness infra (runner, baseline report writer)
 - [ ] Conformance suite green, including kill-mid-lease and commit-past-lease (the §9.8 gate)
 
+## Implementation notes (revised 2026-10-20, during the work)
+
+Changes from the plan above, each with its reason:
+
+1. **`blocking` sorts strictly first in the claim.** C.3's formula alone lets a
+   `backfill` task older than `2 * aging_step` (8 min at defaults) outrank a
+   fresh `blocking` task, which contradicts "blocking always leads"
+   (§5.2.3.3). The claim orders by `(priority <> 'blocking')` first, then the
+   C.3 aging term. Conformance case 6 asserts the exact order.
+2. **`ClaimedTask` also carries `priority` and `age_seconds`**, read by
+   `ingest_claims_total{priority}` and `ingest_task_age_seconds`. Both come from
+   the claim's `returning` clause, so the engine still never re-reads the row.
+3. **The per-session cap applies to `stage = 'page'` only**, as §5.2.3.3 says
+   ("leased page tasks"). Other stages bind `cap = null`.
+4. **Migration adds two CHECKs and two indexes beyond C.1:**
+   `state in (queued, leased, done, failed)` and `attempts >= 0`;
+   `ingest_tasks_lease_expiry` (partial on `state = 'leased'`, read by the
+   5 s expiry sweep) and `ingest_outbox_unsent` (partial on `sent_at is null`,
+   read by the 1 s relay).
+5. **Backoff base and cap are config** (`backoff_base_seconds = 2`,
+   `backoff_cap_seconds = 60`, so the defaults match "min(2^attempts, 60)").
+   The suite uses 0.05 s so retry cases run in seconds.
+6. **`prometheus-client` is added to the requirements** along with
+   `confluent-kafka`: the worker serves `/metrics` on 8080 for the k8s scrape
+   annotations. Both are also in `requirements.docker.txt`, which the image
+   installs.
+7. **The reconciler leaves an expired task leased if its stage is not
+   registered in that reconciler** (logged at error every sweep). It cannot
+   run that stage's `on_exhausted`, and marking the task failed without it
+   would skip the document's terminal transition.
+8. **Measured soft-cap overshoot is large for short tasks.** With cap 2 and 8
+   workers on 50 ms tasks, the big session peaked at 8 leased tasks
+   (p95 8, time-averaged 4.6). The documented bound (`cap + workers`) holds,
+   but at this task length the cap barely binds. T5 should re-measure with real
+   page times before choosing an advisory lock per session.
+9. **Harness location:** `server/harness/` (`runner.py`, `report.py`,
+   `suites/ingest_queue.py`). The queue suite reuses the conformance helpers in
+   `server/tests/ingest/helpers.py`.
+10. **Claim cost grows with queue depth.** The C.3 sort key is an expression, so
+    every claim sorts all queued rows of the stage: claim p50 was about 0.9 ms
+    with 500 queued and 3.5 ms (p95 7.5 ms) with 4,000 queued. This is fine at
+    T2 volumes; T5 should watch it under a large backfill.
+
 ## Out of scope
 
 - `ingest_documents`, `ingest_document_readiness`, intake, object storage -> #93
