@@ -30,8 +30,9 @@ import uvicorn
 load_dotenv(dotenv_path=Path(__file__).parent.parent / '.env')   # project root
 load_dotenv(dotenv_path=Path(__file__).parent / '.env')          # server/ (no override)
 
-# Add app directory to Python path
-sys.path.insert(0, str(Path(__file__).parent / 'app'))
+# Do not put server/app on sys.path: nothing imports from it by bare name,
+# and spawn children (app.core.offload) inherit sys.path, where
+# app/logging.py would shadow the stdlib logging module and kill the child.
 
 # NOTE: authenticate_user import removed — the legacy hardcoded endpoint
 # that used it has been commented out.  Auth is applied per-router now.
@@ -58,6 +59,8 @@ def _configure_service_logger() -> logging.Logger:
 
     logger = logging.getLogger("medscribe.startup")
     logger.setLevel(logging.DEBUG)
+    # Own handlers below; do not also print through the root handler.
+    logger.propagate = False
 
     fmt = logging.Formatter(
         "%(asctime)s  %(levelname)-8s  %(message)s",
@@ -205,9 +208,27 @@ async def lifespan(app: FastAPI):
     if sink:
         log.info("  [OK]  Trace sink        — JSONL trace sink active")
 
+    # Without this the API process drops every app.* INFO log (only the
+    # last-resort WARNING handler is active), including offload job logs.
+    from app.logging import configure_logging
+    configure_logging(level=settings.logging.level)
+
+    # OCR + compile child-process pools (#91). On failure the API still
+    # serves; upload and pipeline return 503 naming the startup error.
+    from app.core import offload
+    try:
+        offload.start(settings.offload, log_level=settings.logging.level)
+        log.info(
+            f"  [OK]  Offload pools     — ocr={settings.offload.ocr_pool_workers} "
+            f"compile={settings.offload.compile_pool_workers} (spawn)"
+        )
+    except Exception as exc:
+        log.error(f"  [FAIL] Offload pools    — {exc}; upload and pipeline will return 503")
+
     yield  # application runs here
 
     log.info("  MedScribe API — shutdown")
+    offload.shutdown()
     if sink:
         sink.close()
 

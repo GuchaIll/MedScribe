@@ -42,3 +42,11 @@ kubectl apply -R -f services/
 - Pin `image:` to a real tag instead of `latest` before deploying.
 - Speech inference itself runs on **Modal** (`infra/modal/`), not in-cluster;
   the audio worker only proxies to it over HTTP.
+- The Python API (`PYTHON_BACKEND_URL`, `python-backend:3001`) has no manifest
+  here yet. When one is added, size it for its child processes (#91): each
+  uvicorn worker runs `1 + OCR_POOL_WORKERS + COMPILE_POOL_WORKERS` Python
+  processes plus a resource tracker. Measured peak RSS (8-page PDF probe,
+  `docs/benchmarks/t0-isolation/`): parent about 1.2 GB with the embedding model
+  loaded, OCR child about 340 MB with `OCR_CHILD_THREADS=2`. Keep
+  `OCR_CHILD_THREADS` at or below the pod CPU limit: ONNX Runtime otherwise
+  sizes its pool to every node core and starves the API process.

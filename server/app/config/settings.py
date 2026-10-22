@@ -90,6 +90,58 @@ class FeatureConfig:
     performance_log_threshold_ms: int = 100  # Log operations slower than this
 
 
+class OffloadConfigError(ValueError):
+    """An offload pool setting is missing, not an int, or out of range."""
+
+
+# env var -> (OffloadConfig attribute, min, max)
+_OFFLOAD_ENV: dict[str, tuple[str, int, int]] = {
+    "OCR_POOL_WORKERS": ("ocr_pool_workers", 1, 8),
+    "COMPILE_POOL_WORKERS": ("compile_pool_workers", 1, 8),
+    "OCR_JOB_TIMEOUT_S": ("ocr_job_timeout_s", 1, 3600),
+    "COMPILE_JOB_TIMEOUT_S": ("compile_job_timeout_s", 1, 3600),
+    "OCR_CHILD_THREADS": ("ocr_child_threads", 1, 16),
+}
+
+
+@dataclass
+class OffloadConfig:
+    """Child-process pools that keep OCR and compile off the API event loop (#91)."""
+
+    ocr_pool_workers: int = 1
+    compile_pool_workers: int = 1
+    ocr_job_timeout_s: int = 300
+    compile_job_timeout_s: int = 600
+    # ONNX Runtime intra-op threads per OCR child. Its default sizes the pool
+    # to every visible core, which ignores container CPU quotas and starves
+    # the API process.
+    ocr_child_threads: int = 2
+
+    def __post_init__(self) -> None:
+        for env_name, (attr, lo, hi) in _OFFLOAD_ENV.items():
+            value = getattr(self, attr)
+            if isinstance(value, bool) or not isinstance(value, int) or not lo <= value <= hi:
+                raise OffloadConfigError(
+                    f"{env_name} ({attr}) must be an int in [{lo}, {hi}], got {value!r}"
+                )
+
+    @classmethod
+    def from_env(cls, base: Optional[dict] = None) -> "OffloadConfig":
+        """Build from the YAML ``offload`` block, overridden by env vars."""
+        values = dict(base or {})
+        for env_name, (attr, lo, hi) in _OFFLOAD_ENV.items():
+            raw = os.getenv(env_name)
+            if raw is None or raw.strip() == "":
+                continue
+            try:
+                values[attr] = int(raw.strip())
+            except ValueError:
+                raise OffloadConfigError(
+                    f"{env_name} must be an int in [{lo}, {hi}], got {raw!r}"
+                ) from None
+        return cls(**values)
+
+
 @dataclass
 class Settings:
     """Complete application settings."""
@@ -106,6 +158,7 @@ class Settings:
     storage: StorageConfig = field(default_factory=StorageConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     features: FeatureConfig = field(default_factory=FeatureConfig)
+    offload: OffloadConfig = field(default_factory=OffloadConfig)
 
     # API Keys (from environment only, never in config file)
     groq_api_key: Optional[str] = None
@@ -137,6 +190,7 @@ class Settings:
         storage_config = StorageConfig(**settings_dict.get("storage", {}))
         logging_config = LoggingConfig(**settings_dict.get("logging", {}))
         features_config = FeatureConfig(**settings_dict.get("features", {}))
+        offload_config = OffloadConfig.from_env(settings_dict.get("offload", {}))
 
         return cls(
             model=model_config,
@@ -144,6 +198,7 @@ class Settings:
             storage=storage_config,
             logging=logging_config,
             features=features_config,
+            offload=offload_config,
             environment=os.getenv("ENVIRONMENT", settings_dict.get("environment", "development")),
             debug=os.getenv("DEBUG", str(settings_dict.get("debug", False))).lower() == "true",
             groq_api_key=os.getenv("GROQ_API_KEY"),

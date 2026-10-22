@@ -13,12 +13,13 @@ Endpoint:
 
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
 
 from app.api.dependencies import get_session_service, get_db
 from app.api.schemas import TranscriptSegmentSchema
+from app.core import offload
 from app.services.session_service import SessionService
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ class InternalPipelineResponse(BaseModel):
 @router.post("/internal/pipeline", response_model=InternalPipelineResponse)
 async def run_pipeline_internal(
     body: InternalPipelineRequest,
+    response: Response,
     db=Depends(get_db),
     service: SessionService = Depends(get_session_service),
 ):
@@ -104,6 +106,7 @@ async def run_pipeline_internal(
 
     try:
         final_state = await engine.execute_async(initial_state)
+        response.headers[offload.OFFLOAD_HEADER] = engine.last_offload_mode or "process"
         return InternalPipelineResponse(
             session_id=body.session_id,
             status="completed",
