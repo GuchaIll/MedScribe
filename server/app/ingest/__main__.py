@@ -3,6 +3,7 @@ Entry points:
 
     python -m app.ingest worker --stage noop
     python -m app.ingest reconciler
+    python -m app.ingest migrate
 
 Config comes from INGEST_* env vars (see config.py), DATABASE_URL, and
 KAFKA_BROKERS (reconciler; unset = logging publisher, with a warning).
@@ -40,14 +41,43 @@ logger = get_logger("app.ingest")
 DB_CONNECT_DEADLINE_SECONDS = 30.0
 
 
+def normalize_database_url(url: object) -> str:
+    """
+    Accept the cluster secret's lib/pq `postgres://` URL and the compose
+    `postgresql://` URL. SQLAlchemy 2 has no `postgres` dialect.
+
+    The returned URL is for create_engine / Alembic only. Never log it.
+    """
+    if not isinstance(url, str) or not url.strip():
+        raise IngestConfigError("DATABASE_URL", url, "a postgres:// or postgresql:// URL")
+    raw = url.strip()
+    scheme, sep, rest = raw.partition("://")
+    if sep != "://" or not rest:
+        raise IngestConfigError("DATABASE_URL", "<redacted>", "a postgres:// or postgresql:// URL")
+    scheme_l = scheme.lower()
+    if scheme_l == "sqlite" or scheme_l.startswith("sqlite+"):
+        raise IngestConfigError("DATABASE_URL", "<redacted>", "a postgres:// or postgresql:// URL, not sqlite")
+    if scheme_l == "postgres":
+        logger.info("rewrote DATABASE_URL scheme from postgres:// to postgresql+psycopg2://")
+        return "postgresql+psycopg2://" + rest
+    if scheme_l == "postgresql":
+        return "postgresql+psycopg2://" + rest
+    if scheme_l.startswith("postgresql+"):
+        return raw
+    raise IngestConfigError(
+        "DATABASE_URL",
+        "<redacted>",
+        f"a postgres:// or postgresql:// URL, got scheme {scheme_l!r}",
+    )
+
+
 def build_registry() -> StageRegistry:
     """Stages this build can run. #93 / #59 / #54 add split, page, finalize."""
     return StageRegistry([NoopStage()])
 
 
 def connect_engine(url: str, *, pool_size: int) -> Engine:
-    if not url or url.startswith("sqlite"):
-        raise IngestConfigError("DATABASE_URL", url, "a postgresql:// URL (the queue needs Postgres)")
+    url = normalize_database_url(url)
     engine = create_engine(
         url, pool_size=pool_size, max_overflow=2, pool_pre_ping=True, connect_args={"connect_timeout": 3}
     )
@@ -114,12 +144,29 @@ def _stop_event() -> threading.Event:
     return stop
 
 
+def migrate() -> None:
+    """Apply Alembic head. Used by the k8s initContainer; cwd must be server/."""
+    raw = os.environ.get("DATABASE_URL") or _database_url()
+    os.environ["DATABASE_URL"] = normalize_database_url(raw)
+    # Alembic reads get_settings(), which caches the URL from before the rewrite.
+    from app.config import settings as settings_mod
+
+    settings_mod._settings = None
+    from alembic import command
+    from alembic.config import Config
+
+    logger.info("applying alembic migrations to head")
+    command.upgrade(Config("alembic.ini"), "head")
+    logger.info("alembic migrations at head")
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.ingest")
     sub = parser.add_subparsers(dest="role", required=True)
     w = sub.add_parser("worker", help="run a batch worker for one stage")
     w.add_argument("--stage", required=True)
     r = sub.add_parser("reconciler", help="run the reconciler loops")
+    sub.add_parser("migrate", help="apply Alembic migrations to head")
     for p in (w, r):
         p.add_argument("--metrics-port", type=int, default=int(os.environ.get("INGEST_METRICS_PORT", "8080")))
         p.add_argument("--pod", default=os.environ.get("POD_NAME") or socket.gethostname())
@@ -127,6 +174,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     configure_logging(level=os.environ.get("LOG_LEVEL", "INFO"))
     try:
+        if args.role == "migrate":
+            migrate()
+            return 0
         cfg = IngestQueueConfig.from_env()
         registry = build_registry()
         metrics = default_metrics()

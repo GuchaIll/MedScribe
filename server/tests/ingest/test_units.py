@@ -15,6 +15,7 @@ from app.ingest import engine as engine_mod
 from app.ingest.claim import ClaimedTask
 from app.ingest.config import IngestQueueConfig
 from app.ingest.engine import OUTCOME_FENCE_REJECTED, OUTCOME_LEASE_LOST, Worker
+from app.ingest.__main__ import normalize_database_url
 from app.ingest.errors import IngestConfigError, IngestInputError, StageContractError, UnknownStageError
 from app.ingest.metrics import IngestMetrics
 from app.ingest.noop_stage import NoopStage
@@ -162,6 +163,53 @@ def test_write_outbox_validates_payload():
     with pytest.raises(IngestInputError, match="bytes"):
         write_outbox(conn, topic="t", key="k", payload={"blob": "x" * (MAX_PAYLOAD_BYTES + 1)})
     conn.execute.assert_not_called()
+
+
+def test_database_url_rewrites_libpq_scheme_without_logging_secret(caplog):
+    raw = "postgres://medscribe:s3cret@postgres:5432/medscribe?sslmode=disable"
+    with caplog.at_level("INFO"):
+        rewritten = normalize_database_url(raw)
+    assert rewritten == "postgresql+psycopg2://medscribe:s3cret@postgres:5432/medscribe?sslmode=disable"
+    assert "s3cret" not in caplog.text
+    assert normalize_database_url("postgresql://u:p@h/db") == "postgresql+psycopg2://u:p@h/db"
+    assert normalize_database_url("postgresql+psycopg2://u:p@h/db") == "postgresql+psycopg2://u:p@h/db"
+
+
+def test_database_url_rejects_non_postgres_without_leaking_secret():
+    with pytest.raises(IngestConfigError, match="mysql") as exc:
+        normalize_database_url("mysql://user:s3cret@db/medscribe")
+    assert "s3cret" not in str(exc.value)
+    with pytest.raises(IngestConfigError, match="sqlite"):
+        normalize_database_url("sqlite:///./medscribe.db")
+    with pytest.raises(IngestConfigError, match="DATABASE_URL"):
+        normalize_database_url("")
+
+
+def test_lease_expiry_runs_while_relay_is_blocked():
+    cfg = IngestQueueConfig.load()
+    rec = Reconciler(MagicMock(), StageRegistry([NoopStage()]), cfg, InMemoryOutboxPublisher(), name="r")
+    publish_entered = threading.Event()
+    release = threading.Event()
+    expired = threading.Event()
+
+    def blocking_relay():
+        publish_entered.set()
+        assert release.wait(5), "relay was not released"
+
+    rec.relay_outbox = blocking_relay  # type: ignore[method-assign]
+    rec._expiry_tick = expired.set  # type: ignore[method-assign]
+    rec.repair = lambda: None  # type: ignore[method-assign]
+    stop = threading.Event()
+    thread = threading.Thread(target=lambda: rec.run_forever(stop), daemon=True)
+    thread.start()
+    try:
+        assert publish_entered.wait(2), "relay did not start"
+        assert expired.wait(2), "lease expiry did not run while outbox relay was blocked"
+    finally:
+        release.set()
+        stop.set()
+        thread.join(3)
+    assert not thread.is_alive()
 
 
 def test_worker_and_reconciler_validate_dependencies():

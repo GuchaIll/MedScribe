@@ -180,13 +180,7 @@ tables are written. Note this in the stage docstring.
   `last_error = 'lease_expired'`; at max -> `failed` plus `on_exhausted` in the
   same transaction. Log each at `warning` (task id, stage, `lease_owner`,
   attempts).
-- **Outbox relay, 1 s.** `select ... from ingest_outbox where sent_at is null order by created_at for update skip locked limit 100`.
-  Publish each, then `update sent_at`. Publish succeeded but the update failed ->
-  the row is re-sent next tick (at-least-once; consumers dedupe on `event_id`).
-  Publish failed -> leave `sent_at` null, log `warning` with `event_id` and
-  topic, increment `ingest_outbox_publish_failures_total`, keep going with the
-  next row. Never block the loop on one bad row. Age alarm: the oldest unsent
-  row's age is the metric `ingest_outbox_oldest_unsent_seconds`.
+- **Outbox relay, 1 s.** `select ... from ingest_outbox where sent_at is null order by created_at for update skip locked limit 100`, copy the rows, and commit before publish. Publish outside the transaction, then `update sent_at` in its own transaction. Publish succeeded but the update failed -> the row is re-sent next tick (at-least-once; consumers dedupe on `event_id`). Publish failed -> leave `sent_at` null, log `warning` with `event_id` and topic, increment `ingest_outbox_publish_failures_total`, keep going with the next row. Never block lease expiry on one bad row or a slow broker: expiry runs on its own thread. Age alarm: the oldest unsent row's age is the metric `ingest_outbox_oldest_unsent_seconds`.
 - **Repair, 60 s (queue-internal only in T2).** Log at `warning`, do not fix
   automatically:
   - tasks `queued` with `attempts >= max_attempts` (should have been `failed`)
@@ -371,6 +365,16 @@ Changes from the plan above, each with its reason:
     every claim sorts all queued rows of the stage: claim p50 was about 0.9 ms
     with 500 queued and 3.5 ms (p95 7.5 ms) with 4,000 queued. This is fine at
     T2 volumes; T5 should watch it under a large backfill.
+11. **Lease expiry is not on the relay thread.** A Kafka `flush` inside the
+    outbox transaction stalled both replicas' 5 s expiry sweep. The relay now
+    commits the `SKIP LOCKED` read before `publish`, and `run_forever` runs
+    expiry on its own thread. Two replicas may both publish one `event_id`
+    during that window; delivery stays at-least-once.
+12. **Kubernetes image stays `ghcr.io/medscribe/server`.** `ghcr.io/medscribe/api`
+    is the Go gateway binary and has no Python. Pods rewrite the shared
+    secret's `postgres://` URL to `postgresql+psycopg2://` and apply Alembic
+    head in an initContainer, because that secret is lib/pq-shaped and no other
+    manifest migrates the Python schema.
 
 ## Out of scope
 

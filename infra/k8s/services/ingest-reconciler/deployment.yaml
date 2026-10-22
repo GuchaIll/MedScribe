@@ -24,9 +24,25 @@ spec:
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
+      # Lease expiry must keep running if the broker is slow. The process
+      # does that on its own thread; this pod still has to start from the
+      # Python image, not the Go gateway image.
+      terminationGracePeriodSeconds: 30
+      initContainers:
+        - name: migrate
+          image: ghcr.io/medscribe/server:latest
+          workingDir: /app
+          command: ["python", "-m", "app.ingest", "migrate"]
+          envFrom:
+            - configMapRef:
+                name: medscribe-config
+            - secretRef:
+                name: medscribe-secrets
       containers:
         - name: ingest-reconciler
+          # Python server image (server/Dockerfile), not ghcr.io/medscribe/api.
           image: ghcr.io/medscribe/server:latest
+          workingDir: /app
           command: ["python", "-m", "app.ingest", "reconciler"]
           env:
             - name: POD_NAME

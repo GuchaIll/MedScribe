@@ -7,9 +7,13 @@ Reconciler loops for the ingest queue (SDD §5.2.3.6, T2 subset).
 - repair (60 s): queue-internal invariant checks, logged at warning, never
   auto-fixed
 
-Every sweep is `for update skip locked`, so two replicas share the work with
-no leader election. Progress fan-out, Lease sharding, stats, retention and
-orphan GC arrive with #93 / #94.
+Lease expiry runs on its own thread. The relay publishes outside the database
+transaction, so a slow or down broker cannot stall lease recovery or hold
+outbox row locks across the Kafka flush. Two replicas can both publish the
+same event_id in that window; consumers dedupe. Every sweep is
+`for update skip locked`, so two replicas share the work with no leader
+election. Progress fan-out, Lease sharding, stats, retention and orphan GC
+arrive with #93 / #94.
 """
 
 from __future__ import annotations
@@ -233,43 +237,65 @@ class Reconciler:
     def _mark_sent(self, conn: Connection, event_id: uuid.UUID) -> None:
         conn.execute(_MARK_SENT_SQL, {"event_id": str(event_id)})
 
+    def _fetch_unsent(self) -> List[tuple]:
+        """Copy unsent rows in a short transaction. Locks are released before publish."""
+        with self.engine.connect() as conn:
+            with conn.begin():
+                rows = conn.execute(_UNSENT_SQL, {"limit": SWEEP_LIMIT}).fetchall()
+                copied = []
+                for row in rows:
+                    event_id = row.event_id if isinstance(row.event_id, uuid.UUID) else uuid.UUID(str(row.event_id))
+                    copied.append((event_id, row.topic, row.key, dict(row.payload)))
+                return copied
+
     def relay_outbox(self) -> RelayResult:
         res = RelayResult()
         try:
-            with self.engine.connect() as conn:
-                with conn.begin():
-                    rows = conn.execute(_UNSENT_SQL, {"limit": SWEEP_LIMIT}).fetchall()
-                    for row in rows:
-                        event_id = row.event_id if isinstance(row.event_id, uuid.UUID) else uuid.UUID(str(row.event_id))
-                        try:
-                            self.publisher.publish(
-                                topic=row.topic, key=row.key, payload=dict(row.payload), event_id=event_id
-                            )
-                        except Exception as exc:
-                            res.publish_failures += 1
-                            self.metrics.outbox_publish_failed()
-                            logger.warning(
-                                "outbox publish failed, will retry next tick event_id=%s topic=%s error=%s",
-                                event_id,
-                                row.topic,
-                                type(exc).__name__,
-                            )
-                            continue
-                        self._mark_sent(conn, event_id)
-                        res.sent += 1
+            rows = self._fetch_unsent()
         except SQLAlchemyError as exc:
-            # Rows published in this batch are re-sent next tick (at-least-once).
             res.aborted = True
             logger.warning(
-                "outbox relay batch rolled back; published rows will be re-sent reconciler=%s published=%d error=%s",
+                "outbox relay could not read unsent rows reconciler=%s error=%s",
                 self.name,
-                res.sent,
                 type(exc).__name__,
             )
+            self._sample_outbox_age()
+            return res
+        for event_id, topic, key, payload in rows:
+            try:
+                self.publisher.publish(topic=topic, key=key, payload=payload, event_id=event_id)
+            except Exception as exc:
+                res.publish_failures += 1
+                self.metrics.outbox_publish_failed()
+                logger.warning(
+                    "outbox publish failed, will retry next tick event_id=%s topic=%s error=%s",
+                    event_id,
+                    topic,
+                    type(exc).__name__,
+                )
+                continue
+            try:
+                with self.engine.begin() as conn:
+                    self._mark_sent(conn, event_id)
+            except SQLAlchemyError as exc:
+                # Published, but sent_at did not commit. Next tick re-sends (at-least-once).
+                res.aborted = True
+                logger.warning(
+                    "outbox mark-sent rolled back; row will be re-sent reconciler=%s event_id=%s error=%s",
+                    self.name,
+                    event_id,
+                    type(exc).__name__,
+                )
+                continue
+            res.sent += 1
         self._sample_outbox_age()
-        if res.sent or res.publish_failures:
+        if res.sent or res.publish_failures or res.aborted:
             logger.info(
-                "outbox relay reconciler=%s sent=%d failures=%d", self.name, res.sent, res.publish_failures
+                "outbox relay reconciler=%s sent=%d failures=%d aborted=%s",
+                self.name,
+                res.sent,
+                res.publish_failures,
+                res.aborted,
             )
         return res
 
@@ -327,13 +353,55 @@ class Reconciler:
     # -- scheduling ------------------------------------------------------
 
     def run_forever(self, stop: threading.Event) -> None:
-        loops: List[tuple[str, float, Callable[[], object]]] = [
-            ("lease_expiry", LEASE_EXPIRY_INTERVAL, self._expiry_tick),
-            ("outbox_relay", OUTBOX_RELAY_INTERVAL, self.relay_outbox),
-            ("repair", REPAIR_INTERVAL, self.repair),
-        ]
+        if not isinstance(stop, threading.Event):
+            raise IngestInputError("stop", type(stop).__name__, "a threading.Event")
+        logger.info(
+            "reconciler started name=%s lease_expiry_thread=independent interval_s=%s",
+            self.name,
+            LEASE_EXPIRY_INTERVAL,
+        )
+        # Own thread: a Kafka flush in the relay must not delay lease recovery.
+        expiry = threading.Thread(
+            target=self._run_loop,
+            args=("lease_expiry", LEASE_EXPIRY_INTERVAL, self._expiry_tick, stop),
+            name=f"ingest-lease-expiry-{self.name}",
+            daemon=True,
+        )
+        expiry.start()
+        try:
+            self._run_scheduled(
+                [
+                    ("outbox_relay", OUTBOX_RELAY_INTERVAL, self.relay_outbox),
+                    ("repair", REPAIR_INTERVAL, self.repair),
+                ],
+                stop,
+            )
+        finally:
+            expiry.join(timeout=max(5.0, float(self.cfg.lease_seconds)))
+            if expiry.is_alive():
+                logger.warning(
+                    "lease expiry thread still running after stop; it is daemon and will die with the process name=%s",
+                    self.name,
+                )
+            logger.info("reconciler stopped name=%s", self.name)
+
+    def _run_loop(self, name: str, interval: float, fn: Callable[[], object], stop: threading.Event) -> None:
+        next_run = 0.0
+        while not stop.is_set():
+            now = time.monotonic()
+            if now >= next_run:
+                next_run = now + interval
+                try:
+                    fn()
+                except Exception:
+                    logger.exception(
+                        "reconciler loop failed, will retry next interval loop=%s name=%s", name, self.name
+                    )
+            if stop.wait(max(0.05, next_run - time.monotonic())):
+                return
+
+    def _run_scheduled(self, loops: List[tuple[str, float, Callable[[], object]]], stop: threading.Event) -> None:
         next_run = {name: 0.0 for name, _, _ in loops}
-        logger.info("reconciler started name=%s", self.name)
         while not stop.is_set():
             now = time.monotonic()
             for name, interval, fn in loops:
@@ -343,9 +411,10 @@ class Reconciler:
                 try:
                     fn()
                 except Exception:
-                    logger.exception("reconciler loop failed, will retry next interval loop=%s name=%s", name, self.name)
+                    logger.exception(
+                        "reconciler loop failed, will retry next interval loop=%s name=%s", name, self.name
+                    )
             stop.wait(max(0.05, min(next_run.values()) - time.monotonic()))
-        logger.info("reconciler stopped name=%s", self.name)
 
     def _expiry_tick(self) -> None:
         self.expire_leases()

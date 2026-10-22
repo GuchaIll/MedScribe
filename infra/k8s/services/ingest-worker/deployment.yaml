@@ -27,9 +27,23 @@ spec:
       # A worker finishes its current task on SIGTERM; anything longer is
       # re-queued by the reconciler when the lease (30 s) expires.
       terminationGracePeriodSeconds: 45
+      # Same image as the container. ghcr.io/medscribe/api is the Go gateway
+      # binary and has no Python interpreter, so it cannot run this command.
+      initContainers:
+        - name: migrate
+          image: ghcr.io/medscribe/server:latest
+          workingDir: /app
+          command: ["python", "-m", "app.ingest", "migrate"]
+          envFrom:
+            - configMapRef:
+                name: medscribe-config
+            - secretRef:
+                name: medscribe-secrets
       containers:
         - name: ingest-worker
+          # Python server image (server/Dockerfile), not ghcr.io/medscribe/api.
           image: ghcr.io/medscribe/server:latest
+          workingDir: /app
           command: ["python", "-m", "app.ingest", "worker", "--stage", "noop"]
           env:
             # lease_owner is diagnostic only; fencing is by lease_token.

@@ -483,6 +483,66 @@ def test_12_outbox_relay_is_at_least_once(db, metrics, monkeypatch):
 # 13 -------------------------------------------------------------------
 
 
+class _BlockingPublisher:
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.published: list = []
+
+    def publish(self, *, topic, key, payload, event_id) -> None:
+        self.published.append(event_id)
+        self.entered.set()
+        if not self.release.wait(15):
+            raise TimeoutError("publish was not released")
+
+    def close(self) -> None:
+        self.release.set()
+
+
+def test_14_lease_expiry_proceeds_while_outbox_publish_blocks(db, metrics):
+    """A broker flush must not hold the outbox row lock or delay lease recovery."""
+    (task_id,) = seed(db, 1)
+    with db.begin() as conn:
+        conn.execute(
+            text(
+                """
+                update ingest_tasks
+                   set state = 'leased', lease_token = gen_random_uuid(), lease_owner = 'dead-pod',
+                       lease_expires_at = clock_timestamp() - interval '1 minute', attempts = 1
+                 where task_id = :t
+                """
+            ),
+            {"t": task_id},
+        )
+        write_outbox(conn, topic="t", key="k", payload={"n": 1})
+    pub = _BlockingPublisher()
+    rec = _reconciler(db, fast_cfg(), metrics, publisher=pub)
+    stop = threading.Event()
+    thread = threading.Thread(target=lambda: rec.run_forever(stop), daemon=True)
+    thread.start()
+    try:
+        assert pub.entered.wait(5), "publish did not start"
+        with db.begin() as conn:
+            conn.execute(text("select event_id from ingest_outbox where sent_at is null for update nowait"))
+        wait_for(
+            lambda: _state(db, task_id)[0] == "queued",
+            timeout=8,
+            what="expired lease to be requeued while publish is blocked",
+        )
+        assert _state(db, task_id)[2] == q.LEASE_EXPIRED_ERROR
+        assert scalar(db, "select sent_at is null from ingest_outbox") is True
+    finally:
+        pub.release.set()
+        stop.set()
+        thread.join(5)
+    assert not thread.is_alive()
+    wait_for(
+        lambda: scalar(db, "select count(*) from ingest_outbox where sent_at is null") == 0,
+        timeout=5,
+        what="published outbox row to be marked sent after the broker returns",
+    )
+
+
 def test_13_partial_unique_indexes_and_checks(db):
     doc = uuid.uuid4()
     with db.begin() as conn:
