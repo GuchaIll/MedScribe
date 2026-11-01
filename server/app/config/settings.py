@@ -101,6 +101,7 @@ _OFFLOAD_ENV: dict[str, tuple[str, int, int]] = {
     "OCR_JOB_TIMEOUT_S": ("ocr_job_timeout_s", 1, 3600),
     "COMPILE_JOB_TIMEOUT_S": ("compile_job_timeout_s", 1, 3600),
     "OCR_CHILD_THREADS": ("ocr_child_threads", 1, 16),
+    "OCR_CHILD_NICE": ("ocr_child_nice", 0, 19),
 }
 
 
@@ -116,6 +117,9 @@ class OffloadConfig:
     # to every visible core, which ignores container CPU quotas and starves
     # the API process.
     ocr_child_threads: int = 2
+    # Advisory Unix niceness for OCR children. Positive values favor the API
+    # process when both share a CPU cgroup; this is not hard CPU isolation.
+    ocr_child_nice: int = 5
 
     def __post_init__(self) -> None:
         for env_name, (attr, lo, hi) in _OFFLOAD_ENV.items():

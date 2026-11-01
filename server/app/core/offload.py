@@ -173,10 +173,20 @@ def _invoke(fn: Callable[[Any], T], job: Any) -> tuple[float, float, T]:
     return started, time.time() - started, value
 
 
-def _init_child(ocr_threads: Optional[int], log_level: str) -> None:
+def _init_child(
+    ocr_threads: Optional[int], ocr_nice: Optional[int], log_level: str
+) -> None:
     from app.logging import configure_logging
+    from app.core.runtime_resources import (
+        configure_torch_threads,
+        effective_cpu_count,
+        lower_process_priority,
+    )
 
     configure_logging(level=log_level)
+    configure_torch_threads(effective_cpu_count())
+    if ocr_nice is not None:
+        lower_process_priority(ocr_nice)
     if ocr_threads is not None:
         try:
             from app.core.ocr.extractor import _get_paddle_ocr, set_rapid_ocr_threads
@@ -191,12 +201,20 @@ def _init_child(ocr_threads: Optional[int], log_level: str) -> None:
 
 
 class _Pool:
-    def __init__(self, name: str, workers: int, timeout_s: int,
-                 ocr_threads: Optional[int], log_level: str) -> None:
+    def __init__(
+        self,
+        name: str,
+        workers: int,
+        timeout_s: int,
+        ocr_threads: Optional[int],
+        ocr_nice: Optional[int],
+        log_level: str,
+    ) -> None:
         self.name = name
         self.workers = workers
         self.timeout_s = timeout_s
         self._ocr_threads = ocr_threads
+        self._ocr_nice = ocr_nice
         self._log_level = log_level
         self.executor: Optional[ProcessPoolExecutor] = None
 
@@ -207,7 +225,7 @@ class _Pool:
             # Redis clients, and threads into the child.
             mp_context=multiprocessing.get_context("spawn"),
             initializer=_init_child,
-            initargs=(self._ocr_threads, self._log_level),
+            initargs=(self._ocr_threads, self._ocr_nice, self._log_level),
         )
 
     def restart(self) -> None:
@@ -234,15 +252,20 @@ def start(config, log_level: str = "INFO") -> None:
     try:
         for pool in (
             _Pool("ocr", config.ocr_pool_workers, config.ocr_job_timeout_s,
-                  ocr_threads=config.ocr_child_threads, log_level=log_level),
+                  ocr_threads=config.ocr_child_threads,
+                  ocr_nice=config.ocr_child_nice, log_level=log_level),
             _Pool("compile", config.compile_pool_workers, config.compile_job_timeout_s,
-                  ocr_threads=None, log_level=log_level),
+                  ocr_threads=None, ocr_nice=None, log_level=log_level),
         ):
             pool.start()
             _pools[pool.name] = pool
             logger.info(
-                "offload: %s pool started workers=%d timeout_s=%d ocr_threads=%s",
-                pool.name, pool.workers, pool.timeout_s, pool._ocr_threads,
+                "offload: %s pool started workers=%d timeout_s=%d ocr_threads=%s ocr_nice=%s",
+                pool.name,
+                pool.workers,
+                pool.timeout_s,
+                pool._ocr_threads,
+                pool._ocr_nice,
             )
     except Exception as exc:
         _start_error = exc

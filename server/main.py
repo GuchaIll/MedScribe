@@ -158,6 +158,15 @@ async def lifespan(app: FastAPI):
     # Check for at least one LLM provider
     from app.config.settings import get_settings
     settings = get_settings()
+    from app.core.runtime_resources import (
+        configure_torch_threads,
+        effective_cpu_count,
+    )
+    cpu_threads = effective_cpu_count()
+    if configure_torch_threads(cpu_threads):
+        log.info(f"  [OK]  Torch threads     — capped at {cpu_threads} available CPU(s)")
+    else:
+        log.warning(f"  [WARN] Torch threads   — unable to cap at {cpu_threads} available CPU(s)")
     llm_providers_available = []
     if settings.groq_api_key:
         llm_providers_available.append("groq")

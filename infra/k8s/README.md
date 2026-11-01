@@ -49,4 +49,8 @@ kubectl apply -R -f services/
   `docs/benchmarks/t0-isolation/`): parent about 1.2 GB with the embedding model
   loaded, OCR child about 340 MB with `OCR_CHILD_THREADS=2`. Keep
   `OCR_CHILD_THREADS` at or below the pod CPU limit: ONNX Runtime otherwise
-  sizes its pool to every node core and starves the API process.
+  sizes its pool to every node core and starves the API process. The API and
+  offload children also cap Torch pools from the effective cgroup CPU quota;
+  set `OCR_CHILD_NICE` (default `5`, range `0..19`) only as an advisory
+  preference for API responsiveness, not as a substitute for separate worker
+  CPU allocation.

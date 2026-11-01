@@ -299,6 +299,7 @@ or clinical-state boundary. No new state, event, or persisted model is added.
 | | `mode` | routes -> `X-MedScribe-Offload` header | offload -> HTTP caller |
 | `OffloadConfig` | `ocr_pool_workers`, `compile_pool_workers`, `ocr_job_timeout_s`, `compile_job_timeout_s` | `offload.start` -> `_Pool` | config -> lifespan |
 | | `ocr_child_threads` | `_init_child` -> `extractor.set_rapid_ocr_threads` | config -> OCR child |
+| | `ocr_child_nice` | `_init_child` -> `lower_process_priority` | config -> OCR child |
 
 OCR result reuses `DocumentProcessingResult` unchanged (`pages` emptied before
 it crosses the pipe; no route reads it). Compile result reuses the `GraphState`

@@ -386,3 +386,32 @@ def test_ocr_child_threads_validated_and_passed_to_rapidocr(monkeypatch):
     extractor.set_rapid_ocr_threads(2)
     extractor._get_paddle_ocr()
     assert seen == {"intra_op_num_threads": 2, "inter_op_num_threads": 1}
+
+
+def test_offload_config_validates_ocr_child_nice(monkeypatch):
+    monkeypatch.setenv("OCR_CHILD_NICE", "20")
+    with pytest.raises(OffloadConfigError, match="OCR_CHILD_NICE"):
+        OffloadConfig.from_env()
+
+
+def test_ocr_child_initialization_caps_torch_and_lowers_priority(monkeypatch):
+    from app.core import runtime_resources
+
+    seen = {}
+    monkeypatch.setattr("app.logging.configure_logging", lambda **kwargs: None)
+    monkeypatch.setattr(runtime_resources, "effective_cpu_count", lambda: 4)
+    monkeypatch.setattr(
+        runtime_resources,
+        "configure_torch_threads",
+        lambda count: seen.setdefault("torch_threads", count),
+    )
+    monkeypatch.setattr(
+        runtime_resources,
+        "lower_process_priority",
+        lambda target: seen.setdefault("nice", target),
+    )
+    monkeypatch.setattr("app.core.ocr.extractor.set_rapid_ocr_threads", lambda count: None)
+    monkeypatch.setattr("app.core.ocr.extractor._get_paddle_ocr", lambda: None)
+
+    offload._init_child(2, 5, "INFO")
+    assert seen == {"torch_threads": 4, "nice": 5}
