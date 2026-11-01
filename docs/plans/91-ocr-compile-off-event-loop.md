@@ -173,6 +173,43 @@ transcript text, document text, extracted values, or the Groq key.
 
 Changes from the design above, and why:
 
+### CPU guardrail follow-up (2026-11-01)
+
+The first paired probe removed event-loop blocking but did not meet the fixed
+1.2x idle-versus-ingesting latency criterion.  The remaining cause is shared
+CPU allocation: ONNX in the OCR child, Torch in the API process, and Torch in
+the compile child all size thread pools from host-visible CPUs rather than the
+container's CPU quota.  A local process pool also duplicates model memory per
+Uvicorn worker, so it remains a T0 stopgap rather than a worker architecture.
+
+This follow-up is intentionally bounded to controls that can reduce the T0
+risk without inventing a second queue:
+
+1. Detect the effective CPU allowance from cgroup v2/v1 quota files, bounded
+   by scheduler affinity, with a safe `os.cpu_count()` fallback.
+2. Cap Torch intra-op and inter-op threads in the API process and every
+   offload child to that allowance before model work begins.  The cap is
+   best-effort because a process may have already initialized Torch; that case
+   must be logged rather than hidden.
+3. Apply a validated, best-effort positive niceness to OCR children only so
+   interactive API work is favored when the processes share a CPU cgroup.
+4. Add unit coverage for quota parsing, Torch configuration, and priority
+   degradation.  Re-run the paired probe with a live LLM endpoint and multiple
+   samples before claiming the exit criterion is met.
+
+These controls cannot provide hard CPU isolation: cgroup throttling applies to
+the pod as a whole, and `nice` is advisory.  The durable solution remains T5
+(an OCR worker deployment) with a supervised queue, worker leases, page-level
+idempotent checkpoints, and cooperative priority preemption.  A timeout
+cannot safely reclaim a `ProcessPoolExecutor` slot in this patch; it needs
+that worker lifecycle and persisted progress model.
+
+**Data-model proof.** `OffloadConfig.ocr_child_nice` is the sole new field. It
+is read by `offload.start` to construct the OCR `_Pool`, passed to `_init_child`
+over the parent-to-child initializer interface, and consumed only by
+`os.nice`. It is an integer in `[0, 19]`; it does not cross an HTTP, database,
+or clinical-state boundary. No new state, event, or persisted model is added.
+
 - **Prerequisite 1 (Alembic heads)** is handled by PR #99 (`fix/alembic-two-heads`,
   005 revises 004). Not folded in here. The probe ran with
   `alembic upgrade heads` so it did not depend on #99.
