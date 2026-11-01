@@ -71,3 +71,7 @@ debugpy==1.8.1
 python-jose==3.3.0
 passlib==1.7.4
 bcrypt==4.1.2
+
+# Ingest queue (#92): outbox relay to Kafka, worker metrics
+confluent-kafka==2.6.1
+prometheus-client==0.21.0

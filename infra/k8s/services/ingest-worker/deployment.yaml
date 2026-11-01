@@ -1,0 +1,74 @@
+# Ingest batch worker (T2, #92): claims ingest_tasks for one stage from
+# Postgres (claim / lease / fence). Runs the no-op stage until #93 / #59 / #54
+# register split, page and finalize. Python server image (server/Dockerfile).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: medscribe-ingest-worker
+  namespace: medscribe
+  labels:
+    app.kubernetes.io/name: medscribe-ingest-worker
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: medscribe-ingest-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: medscribe-ingest-worker
+        app.kubernetes.io/component: worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      # A worker finishes its current task on SIGTERM; anything longer is
+      # re-queued by the reconciler when the lease (30 s) expires.
+      terminationGracePeriodSeconds: 45
+      # Same image as the container. ghcr.io/medscribe/api is the Go gateway
+      # binary and has no Python interpreter, so it cannot run this command.
+      initContainers:
+        - name: migrate
+          image: ghcr.io/medscribe/server:latest
+          workingDir: /app
+          command: ["python", "-m", "app.ingest", "migrate"]
+          envFrom:
+            - configMapRef:
+                name: medscribe-config
+            - secretRef:
+                name: medscribe-secrets
+      containers:
+        - name: ingest-worker
+          # Python server image (server/Dockerfile), not ghcr.io/medscribe/api.
+          image: ghcr.io/medscribe/server:latest
+          workingDir: /app
+          command: ["python", "-m", "app.ingest", "worker", "--stage", "noop"]
+          env:
+            # lease_owner is diagnostic only; fencing is by lease_token.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: metrics
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: medscribe-config
+            - secretRef:
+                name: medscribe-secrets
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

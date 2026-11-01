@@ -1,0 +1,184 @@
+{
+  "suite": "ingest_queue",
+  "rows": [
+    {
+      "scenario": "throughput, 1 worker",
+      "metric": "tasks committed",
+      "value": 4000,
+      "unit": "tasks",
+      "note": "of 4000; a duplicate would be a unique violation"
+    },
+    {
+      "scenario": "throughput, 1 worker",
+      "metric": "throughput",
+      "value": 136.66886861574272,
+      "unit": "tasks/s",
+      "note": "includes process start-up"
+    },
+    {
+      "scenario": "throughput, 1 worker",
+      "metric": "claim latency p50",
+      "value": 3.453209064900875,
+      "unit": "ms",
+      "note": "one claim transaction, including empty polls"
+    },
+    {
+      "scenario": "throughput, 1 worker",
+      "metric": "claim latency p95",
+      "value": 7.529249880462885,
+      "unit": "ms",
+      "note": ""
+    },
+    {
+      "scenario": "throughput, 4 workers",
+      "metric": "tasks committed",
+      "value": 4000,
+      "unit": "tasks",
+      "note": "of 4000; a duplicate would be a unique violation"
+    },
+    {
+      "scenario": "throughput, 4 workers",
+      "metric": "throughput",
+      "value": 429.795130105313,
+      "unit": "tasks/s",
+      "note": "includes process start-up"
+    },
+    {
+      "scenario": "throughput, 4 workers",
+      "metric": "claim latency p50",
+      "value": 3.9791669696569443,
+      "unit": "ms",
+      "note": "one claim transaction, including empty polls"
+    },
+    {
+      "scenario": "throughput, 4 workers",
+      "metric": "claim latency p95",
+      "value": 11.293916031718254,
+      "unit": "ms",
+      "note": ""
+    },
+    {
+      "scenario": "throughput, 8 workers",
+      "metric": "tasks committed",
+      "value": 4000,
+      "unit": "tasks",
+      "note": "of 4000; a duplicate would be a unique violation"
+    },
+    {
+      "scenario": "throughput, 8 workers",
+      "metric": "throughput",
+      "value": 555.1108533243417,
+      "unit": "tasks/s",
+      "note": "includes process start-up"
+    },
+    {
+      "scenario": "throughput, 8 workers",
+      "metric": "claim latency p50",
+      "value": 5.6403330527246,
+      "unit": "ms",
+      "note": "one claim transaction, including empty polls"
+    },
+    {
+      "scenario": "throughput, 8 workers",
+      "metric": "claim latency p95",
+      "value": 19.63687501847744,
+      "unit": "ms",
+      "note": ""
+    },
+    {
+      "scenario": "churn: 8 workers, one SIGKILL every 10 s for 120 s",
+      "metric": "worker kills",
+      "value": 12,
+      "unit": "kills",
+      "note": ""
+    },
+    {
+      "scenario": "churn: 8 workers, one SIGKILL every 10 s for 120 s",
+      "metric": "tasks committed",
+      "value": 4260,
+      "unit": "tasks",
+      "note": "noop_commits is unique per task: no double commit"
+    },
+    {
+      "scenario": "churn: 8 workers, one SIGKILL every 10 s for 120 s",
+      "metric": "tasks re-queued by lease expiry",
+      "value": 18,
+      "unit": "tasks",
+      "note": "about one in-flight task per kill, plus the 8 killed at the end. SIGKILL churn shows up here, not as fence rejections: a killed worker never reaches its fence (commit-past-lease is conformance case 3)"
+    },
+    {
+      "scenario": "churn: 8 workers, one SIGKILL every 10 s for 120 s",
+      "metric": "tasks still leased after expiry sweep",
+      "value": 0,
+      "unit": "tasks",
+      "note": "should be 0"
+    },
+    {
+      "scenario": "starvation: backfill behind a continuous active stream (aging_step = 2 s)",
+      "metric": "backfill wait, max of 3",
+      "value": 2.376243499806151,
+      "unit": "s",
+      "note": "bound is about aging_step (2 s) plus drain lag"
+    },
+    {
+      "scenario": "starvation: backfill behind a continuous active stream (aging_step = 2 s)",
+      "metric": "backfill wait, mean of 3",
+      "value": 2.3292279582625874,
+      "unit": "s",
+      "note": "scales linearly with aging_step (240 s default)"
+    },
+    {
+      "scenario": "per-session cap = 2, 8 workers, 50 ms tasks",
+      "metric": "peak leased (big session)",
+      "value": 8,
+      "unit": "tasks",
+      "note": "documented bound cap + workers = 10"
+    },
+    {
+      "scenario": "per-session cap = 2, 8 workers, 50 ms tasks",
+      "metric": "p95 leased (big session)",
+      "value": 8,
+      "unit": "tasks",
+      "note": ""
+    },
+    {
+      "scenario": "per-session cap = 2, 8 workers, 50 ms tasks",
+      "metric": "mean leased while busy",
+      "value": 4.5830815709969785,
+      "unit": "tasks",
+      "note": "time-averaged over 5 ms samples"
+    },
+    {
+      "scenario": "per-session cap = 4, 8 workers, 50 ms tasks",
+      "metric": "peak leased (big session)",
+      "value": 8,
+      "unit": "tasks",
+      "note": "documented bound cap + workers = 12"
+    },
+    {
+      "scenario": "per-session cap = 4, 8 workers, 50 ms tasks",
+      "metric": "p95 leased (big session)",
+      "value": 8,
+      "unit": "tasks",
+      "note": ""
+    },
+    {
+      "scenario": "per-session cap = 4, 8 workers, 50 ms tasks",
+      "metric": "mean leased while busy",
+      "value": 6.651376146788991,
+      "unit": "tasks",
+      "note": "time-averaged over 5 ms samples"
+    }
+  ],
+  "params": {
+    "tasks": 4000,
+    "lease_seconds": 5,
+    "postgres": "15.17 (Debian 15.17-1.pgdg12+1)"
+  },
+  "started_at": "2026-10-21T03:22:03+00:00",
+  "environment": {
+    "python": "3.12.13",
+    "machine": "arm64",
+    "os": "Darwin"
+  }
+}
