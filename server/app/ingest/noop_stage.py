@@ -16,6 +16,7 @@ from sqlalchemy.engine import Connection
 from .claim import ClaimedTask
 from .errors import StageContractError
 from .outbox import write_outbox
+from .progress import TaskProgress
 from .stage import Stage
 
 EXHAUSTED_TOPIC = "ingest.task.exhausted"
@@ -45,7 +46,8 @@ class NoopStage(Stage):
         self._fail_compute = fail_compute
         self._commit_hook = commit_hook
 
-    def compute(self, task: ClaimedTask) -> Any:
+    def compute(self, task: ClaimedTask, progress: TaskProgress) -> Any:
+        progress.report()
         delay = self._sleep_for(task) if self._sleep_for is not None else self._sleep_seconds
         if delay > 0:
             time.sleep(delay)

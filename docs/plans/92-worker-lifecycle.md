@@ -93,11 +93,12 @@ page, chunk, or OCR result is.
 
 New:
 - `server/app/ingest/__init__.py`
-- `server/app/ingest/config.py`: `IngestQueueConfig` (pydantic), validated: `lease_seconds` in `[5, 600]`, `aging_step_seconds > 0`, `page_task_cap` in `[1, 64]`, `max_attempts` in `[1, 20]`, `batch` in `[1, 16]`. On invalid values raise `IngestConfigError` naming the field, value, and range.
+- `server/app/ingest/config.py`: `IngestQueueConfig` (pydantic), validated: `lease_seconds` in `[5, 600]`, `aging_step_seconds > 0`, `page_task_cap` in `[1, 64]`, `max_attempts` in `[1, 20]`, `batch` in `[1, 16]`, and independently configured `stale_compute_seconds` in `[5, 86400]`. On invalid values raise `IngestConfigError` naming the field, value, and range.
 - `server/app/ingest/errors.py`: `IngestConfigError`, `LeaseLostError` (renew returned zero rows), `FenceRejectedError` (fence returned zero rows), `UnknownStageError`, `StageContractError` (stage returned or raised something the engine does not accept). All subclass a new `IngestError`.
 - `server/app/ingest/claim.py`: `claim(conn, stage, pod, cfg) -> list[ClaimedTask]` (C.3 verbatim, parameters bound), `renew(conn, task) -> bool` (C.4), `fence(conn, task) -> bool` (C.4, must be the first statement of the output transaction), `bump_to_blocking(conn, doc_id)`.
 - `server/app/ingest/stage.py`: the `Stage` protocol (below) and the stage registry.
 - `server/app/ingest/engine.py`: `Worker`. Poll, claim, run compute with no transaction open, renew on a heartbeat thread, open the output transaction, fence, run `stage.commit(conn, task, output)`, commit. Handles retry and exhaustion paths.
+- `server/app/ingest/progress.py`: thread-safe, ephemeral `TaskProgress` passed only from the worker to its stage and watchdog; it stores no payload and never crosses a process or persistence boundary.
 - `server/app/ingest/reconciler.py`: the three loops, each a `SKIP LOCKED` sweep, safe with two replicas.
 - `server/app/ingest/outbox.py`: `OutboxPublisher` protocol, `KafkaOutboxPublisher`, `InMemoryOutboxPublisher`, and `write_outbox(conn, topic, key, payload)` used inside output transactions.
 - `server/app/ingest/noop_stage.py`: the no-op stage (configurable sleep, configurable failure injection for tests).
@@ -119,8 +120,8 @@ class Stage(Protocol):
     name: str                       # matches ingest_tasks.stage; registry key
     lease_seconds: int | None       # per-stage override; None = config default
 
-    def compute(self, task: ClaimedTask) -> StageOutput:
-        """Pure work. No DB transaction is open. May take long; the engine renews the lease."""
+    def compute(self, task: ClaimedTask, progress: TaskProgress) -> StageOutput:
+        """Pure work. No DB transaction is open. Report each safe unit of forward work."""
 
     def commit(self, conn: Connection, task: ClaimedTask, output: StageOutput) -> None:
         """Runs inside the output transaction, after the fence returned a row.
@@ -300,6 +301,10 @@ shared connection.
     index (`on conflict ... where page is null do nothing` is a no-op).
     CHECKs: `stage = 'page'` with a null page, and `leased` with a null token,
     are both rejected.
+14. **Stale payload progress.** A stage stops reporting progress while lease
+    renewal still succeeds. The worker token-guardedly requeues (or exhausts)
+    the attempt exactly once, then exits with code 75; a fresh worker can claim
+    the task. A delayed renewal alone does not cause a hard exit.
 
 Unit tests (no DB): config validation errors name the field; the stage registry
 rejects an unknown stage (`UnknownStageError`); the backoff function stays in

@@ -49,6 +49,10 @@ class IngestQueueConfig(BaseModel):
     # (Postgres 15 has no transaction_timeout; see #96).
     output_statement_timeout_ms: int = Field(5000, ge=100, le=600000)
     output_idle_in_tx_timeout_ms: int = Field(5000, ge=100, le=600000)
+    # Payload code must report a safe forward-progress unit within this
+    # deadline or the worker records a token-guarded failure and exits for
+    # Kubernetes replacement. It is intentionally distinct from lease renewal.
+    stale_compute_seconds: int = Field(120, ge=5, le=86400)
 
     @model_validator(mode="after")
     def _cross_field(self) -> "IngestQueueConfig":

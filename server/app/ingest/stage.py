@@ -14,6 +14,7 @@ from app.logging import get_logger
 
 from .claim import ClaimedTask
 from .errors import StageContractError, UnknownStageError
+from .progress import TaskProgress
 
 logger = get_logger(__name__)
 
@@ -37,11 +38,12 @@ class Stage(ABC):
     lease_seconds: Optional[int] = None
 
     @abstractmethod
-    def compute(self, task: ClaimedTask) -> Any:
+    def compute(self, task: ClaimedTask, progress: TaskProgress) -> Any:
         """
         Pure work. No DB transaction is open and the engine renews the lease
-        while this runs. Raising schedules a retry (or exhaustion). The engine
-        cannot interrupt compute on lease loss; it discards the output.
+        while this runs. Raising schedules a retry (or exhaustion). Call
+        ``progress.report()`` only after a safe unit of forward work. The
+        engine cannot interrupt compute on lease loss; it discards the output.
         """
 
     def before_commit(self, conn: Connection, task: ClaimedTask) -> None:

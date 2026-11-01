@@ -8,6 +8,7 @@ chunk, or OCR result is. Real stages (#93, #59, #54) implement `Stage`.
 
 from .claim import ClaimedTask
 from .config import IngestQueueConfig
+from .progress import TaskProgress
 from .errors import (
     FenceRejectedError,
     IngestConfigError,
@@ -22,6 +23,7 @@ from .stage import Stage, StageRegistry
 __all__ = [
     "ClaimedTask",
     "IngestQueueConfig",
+    "TaskProgress",
     "IngestError",
     "IngestConfigError",
     "IngestInputError",

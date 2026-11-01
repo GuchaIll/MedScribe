@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 import threading
 import uuid
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 
 import pytest
 from prometheus_client import CollectorRegistry
@@ -20,6 +20,7 @@ from app.ingest.errors import IngestConfigError, IngestInputError, StageContract
 from app.ingest.metrics import IngestMetrics
 from app.ingest.noop_stage import NoopStage
 from app.ingest.outbox import MAX_PAYLOAD_BYTES, InMemoryOutboxPublisher, write_outbox
+from app.ingest.progress import TaskProgress
 from app.ingest.reconciler import Reconciler
 from app.ingest.stage import StageRegistry
 
@@ -79,6 +80,11 @@ def test_config_rejects_unknown_key_and_bad_type():
 def test_config_cross_field_backoff():
     with pytest.raises(IngestConfigError, match="backoff_cap_seconds"):
         IngestQueueConfig.load({"backoff_base_seconds": 10, "backoff_cap_seconds": 5})
+
+
+def test_config_allows_progress_deadline_independent_of_lease_duration():
+    cfg = IngestQueueConfig.load({"lease_seconds": 30, "stale_compute_seconds": 5})
+    assert cfg.stale_compute_seconds == 5
 
 
 def test_config_from_env():
@@ -275,3 +281,75 @@ def test_heartbeat_marks_lost_on_zero_rows(monkeypatch):
     assert hb.lost.wait(2.0)
     hb.stop()
     assert read("ingest_lease_lost_total", stage="noop") == 1
+
+
+def test_noop_stage_reports_compute_progress():
+    reports = []
+
+    class Progress:
+        def report(self):
+            reports.append("safe_unit")
+
+    assert NoopStage().compute(_task(), Progress()) is None  # type: ignore[arg-type]
+    assert reports == ["safe_unit"]
+
+
+def test_progress_watchdog_hard_exits_only_after_stale_report_gap():
+    task = _task()
+    progress = TaskProgress(task)
+    stale_transition = threading.Event()
+    exits = []
+    watchdog = engine_mod._ProgressWatchdog(
+        progress,
+        5,
+        stale_transition.set,
+        lambda code: exits.append(code),
+    )
+    # Avoid a timing-dependent five-second test: this simulates a report gap
+    # beyond the validated threshold, not a delayed lease renewal.
+    progress.seconds_since_report = lambda: 5.0  # type: ignore[method-assign]
+    watchdog.start()
+    watchdog._thread.join(2)
+    assert stale_transition.is_set()
+    assert watchdog.stale.is_set()
+    assert exits == [75]
+
+
+def test_worker_stale_watchdog_records_attempt_before_hard_exit(monkeypatch):
+    exits = []
+
+    class ImmediateStaleWatchdog:
+        def __init__(self, progress, stale_seconds, on_stale, hard_exit):
+            self.stale = threading.Event()
+            self._on_stale = on_stale
+            self._hard_exit = hard_exit
+
+        def start(self):
+            self.stale.set()
+            self._on_stale()
+            self._hard_exit(75)
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(engine_mod, "_ProgressWatchdog", ImmediateStaleWatchdog)
+    worker = Worker(
+        MagicMock(),
+        NoopStage(),
+        IngestQueueConfig.load(),
+        pod="p",
+        heartbeat=False,
+        hard_exit=lambda code: exits.append(code),
+    )
+    fail_attempt = MagicMock()
+    monkeypatch.setattr(worker, "_fail_attempt", fail_attempt)
+
+    task = _task()
+    result = worker.process(task)
+    assert result.outcome == engine_mod.OUTCOME_ABANDONED
+    fail_attempt.assert_called_once_with(
+        task,
+        ANY,
+        reason="stale_progress",
+    )
+    assert exits == [75]

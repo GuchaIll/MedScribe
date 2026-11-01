@@ -15,6 +15,7 @@ reconciler owns the task from there.
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from dataclasses import dataclass
@@ -31,6 +32,7 @@ from .claim import ClaimedTask
 from .config import IngestQueueConfig
 from .errors import FenceRejectedError, IngestInputError, LeaseLostError
 from .metrics import IngestMetrics, default_metrics
+from .progress import TaskProgress
 from .stage import Stage, validate_stage
 
 logger = get_logger(__name__)
@@ -118,6 +120,57 @@ class _Heartbeat:
         )
 
 
+class _ProgressWatchdog:
+    """Hard-exit a worker only after its payload stops reporting progress."""
+
+    def __init__(
+        self,
+        progress: TaskProgress,
+        stale_seconds: int,
+        on_stale: Callable[[], None],
+        hard_exit: Callable[[int], None],
+    ) -> None:
+        self._progress = progress
+        self._stale_seconds = stale_seconds
+        self._on_stale = on_stale
+        self._hard_exit = hard_exit
+        self._stop = threading.Event()
+        self.stale = threading.Event()
+        self._thread = threading.Thread(
+            target=self._run,
+            name=f"ingest-progress-watchdog-{progress.task_id}",
+            daemon=True,
+        )
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=min(5.0, self._stale_seconds))
+
+    def _run(self) -> None:
+        interval = min(1.0, max(0.1, self._stale_seconds / 4.0))
+        while not self._stop.wait(interval):
+            if self._progress.seconds_since_report() < self._stale_seconds:
+                continue
+            self.stale.set()
+            logger.error(
+                "stale payload progress; recording failure then exiting task_id=%s stale_seconds=%s",
+                self._progress.task_id,
+                self._stale_seconds,
+            )
+            try:
+                self._on_stale()
+            except Exception:
+                logger.exception(
+                    "could not record stale payload failure before worker exit task_id=%s",
+                    self._progress.task_id,
+                )
+            self._hard_exit(75)
+            return
+
+
 class Worker:
     """Runs one stage: poll, claim, compute, fence, commit."""
 
@@ -131,6 +184,7 @@ class Worker:
         metrics: Optional[IngestMetrics] = None,
         heartbeat: bool = True,
         sleep: Callable[[float], None] = time.sleep,
+        hard_exit: Callable[[int], None] = os._exit,
     ) -> None:
         if engine is None:
             raise IngestInputError("engine", engine, "a SQLAlchemy Engine")
@@ -146,6 +200,13 @@ class Worker:
         # heartbeat=False exists for the commit-past-lease conformance case.
         self.heartbeat = heartbeat
         self._sleep = sleep
+        if not callable(hard_exit):
+            raise IngestInputError(
+                "hard_exit",
+                type(hard_exit).__name__,
+                "a callable accepting an exit code",
+            )
+        self._hard_exit = hard_exit
         self.lease_seconds = stage.lease_seconds or cfg.lease_seconds
 
     # -- polling ---------------------------------------------------------
@@ -208,14 +269,32 @@ class Worker:
         )
         started = time.monotonic()
         hb: Optional[_Heartbeat] = None
+        progress = TaskProgress(task)
+        watchdog = _ProgressWatchdog(
+            progress,
+            self.cfg.stale_compute_seconds,
+            lambda: self._fail_attempt(
+                task,
+                TimeoutError("stale payload progress"),
+                reason="stale_progress",
+            ),
+            self._hard_exit,
+        )
         if self.heartbeat:
             hb = _Heartbeat(self.engine, task, self.lease_seconds, self.cfg.renew_interval_seconds, self.metrics)
             hb.start()
+        watchdog.start()
         try:
-            output = self.stage.compute(task)
+            output = self.stage.compute(task, progress)
         except Exception as exc:  # stage code: any failure is a retry
+            watchdog.stop()
             if hb is not None:
                 hb.stop()
+            # The watchdog owns a stale attempt's token-guarded transition and
+            # will replace this process. Do not record a duplicate failure if
+            # stage code unwinds while that transition is in flight.
+            if watchdog.stale.is_set():
+                return TaskResult(task.task_id, OUTCOME_ABANDONED)
             if hb is not None and hb.lost.is_set():
                 return TaskResult(task.task_id, OUTCOME_LEASE_LOST)
             logger.warning(
@@ -230,7 +309,11 @@ class Worker:
         if hb is not None:
             hb.stop()
             if hb.lost.is_set():
+                watchdog.stop()
                 return TaskResult(task.task_id, OUTCOME_LEASE_LOST)
+        watchdog.stop()
+        if watchdog.stale.is_set():
+            return TaskResult(task.task_id, OUTCOME_ABANDONED)
 
         try:
             self._commit_output(task, output)
