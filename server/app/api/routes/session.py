@@ -13,6 +13,7 @@ Endpoints:
     PATCH /api/session/{session_id}/queue/{item_id} — Update a queue item
 """
 
+import asyncio
 import logging
 import os
 import uuid
@@ -21,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends, Response, UploadFile, File
 from fastapi.responses import JSONResponse
 
 from app.api.dependencies import get_session_service, get_db
@@ -37,6 +38,7 @@ from app.api.schemas import (
     QueueUpdateRequest,
 )
 from app.services.session_service import SessionService
+from app.core import offload
 from app.core.pipeline_progress import pipeline_progress_store
 
 logger = logging.getLogger(__name__)
@@ -78,6 +80,7 @@ async def transcribe_audio(
 async def run_pipeline(
     session_id: str,
     body: RunPipelineRequest,
+    response: Response,
     db=Depends(get_db),
     service: SessionService = Depends(get_session_service),
 ):
@@ -139,7 +142,15 @@ async def run_pipeline(
         initial_state["is_new_patient"] = True
 
     logger.info("Running pipeline for session %s (%d segments)", session_id, len(body.segments))
-    final_state = await engine.execute_async(initial_state)
+    try:
+        final_state = await engine.execute_async(initial_state)
+    except offload.OffloadUnavailableError as exc:
+        logger.error("Pipeline not run for session %s: %s", session_id, exc)
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
+    except offload.OffloadTimeoutError as exc:
+        logger.error("Pipeline timed out for session %s: %s", session_id, exc)
+        return JSONResponse(status_code=504, content={"detail": str(exc)})
+    response.headers[offload.OFFLOAD_HEADER] = engine.last_offload_mode or "process"
 
     return RunPipelineResponse(
         session_id=session_id,
@@ -416,8 +427,15 @@ async def upload_documents(
     and return structured extraction results + conflict data.
 
     Files are stored under storage/uploads/{session_id}/.
-    Each file is processed through the 10-stage OCR pipeline.
+    Each file is processed through the 10-stage OCR pipeline in the OCR
+    child-process pool (#91), so one upload does not stall other sessions.
     """
+    try:
+        offload.require_pool("ocr")
+    except offload.OffloadUnavailableError as exc:
+        logger.error("Upload rejected for session %s: %s", session_id, exc)
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
+
     session_dir = UPLOAD_DIR / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
 
@@ -436,6 +454,7 @@ async def upload_documents(
                 patient_history = None
 
     results = []
+    offload_modes: set = set()
     for f in files:
         # Store file
         ext = Path(f.filename or "file").suffix
@@ -444,19 +463,34 @@ async def upload_documents(
 
         content = await f.read()
         dest.write_bytes(content)
-        logger.info("Uploaded %s (%d bytes) → %s", f.filename, len(content), dest)
+        logger.info("Uploaded %d bytes -> %s (session %s)", len(content), stored_name, session_id)
 
-        # Run OCR pipeline
+        if not content:
+            logger.warning("Skipping OCR for empty upload %s (session %s)", stored_name, session_id)
+            results.append({
+                "original_name": f.filename,
+                "stored_name": stored_name,
+                "size": 0,
+                "content_type": f.content_type,
+                "path": str(dest),
+                "error": "empty_file",
+            })
+            continue
+
+        # Run OCR pipeline in a child process
         try:
-            from app.core.ocr.pipeline import process_document
-
-            ocr_result = await process_document(
-                file_path=str(dest),
-                session_id=session_id,
-                patient_id=patient_id,
-                patient_history=patient_history,
-                original_filename=f.filename,
+            outcome = await offload.run_ocr(
+                offload.OcrJob(
+                    file_path=str(dest),
+                    session_id=session_id,
+                    patient_id=patient_id,
+                    patient_history=patient_history,
+                    original_filename=f.filename,
+                ),
+                doc_id=stored_name,
             )
+            offload_modes.add(outcome.mode)
+            ocr_result = outcome.value
 
             # Build queue items from conflicts
             queue_items = []
@@ -532,7 +566,9 @@ async def upload_documents(
                 ocr_result.classification.doc_type.value.replace("_", " ").title()
                 if ocr_result.classification else "Document"
             )
-            agent_summary = _build_document_agent_summary(
+            # Sync LLM call: keep it off the event loop too.
+            agent_summary = await asyncio.to_thread(
+                _build_document_agent_summary,
                 filename=f.filename or "document",
                 doc_type=doc_type_label,
                 field_changes=field_changes,
@@ -566,8 +602,18 @@ async def upload_documents(
                 "agent_summary": agent_summary,
             })
 
+        except offload.OffloadTimeoutError as e:
+            logger.error("OCR timed out for %s (session %s): %s", stored_name, session_id, e)
+            results.append({
+                "original_name": f.filename,
+                "stored_name": stored_name,
+                "size": len(content),
+                "content_type": f.content_type,
+                "path": str(dest),
+                "error": "ocr_timeout",
+            })
         except Exception as e:
-            logger.error("OCR pipeline failed for %s: %s", f.filename, e)
+            logger.error("OCR pipeline failed for %s (session %s): %s", stored_name, session_id, e)
             results.append({
                 "original_name": f.filename,
                 "stored_name": stored_name,
@@ -590,12 +636,17 @@ async def upload_documents(
     # the cumulative state across all uploads + transcription
     merged_record = service.get_structured_record(session_id) or ocr_record
 
+    headers = {}
+    if offload_modes:
+        headers[offload.OFFLOAD_HEADER] = (
+            "thread_fallback" if "thread_fallback" in offload_modes else "process"
+        )
     return JSONResponse(content={
         "session_id": session_id,
         "uploaded":   len(results),
         "files":      results,
         "structured_record": merged_record,
-    })
+    }, headers=headers)
 
 
 @router.get("/{session_id}/documents")

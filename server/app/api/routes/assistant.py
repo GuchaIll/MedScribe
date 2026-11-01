@@ -12,6 +12,7 @@ Confidence score is included; if below threshold a disclaimer is attached.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -103,7 +104,10 @@ async def query_assistant(
         db=db,
     )
 
-    result = service.ask_question(
+    # Sync embedding + LLM work: run it off the event loop so one question
+    # does not stall every other session's requests (#91).
+    result = await asyncio.to_thread(
+        service.ask_question,
         patient_id=body.patient_id,
         session_id=session_id,
         question=body.question,

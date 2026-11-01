@@ -8,7 +8,6 @@ Orchestrates LangGraph workflow execution with:
 - Status tracking
 """
 
-import asyncio
 from typing import Dict, Any, Optional, AsyncGenerator
 from datetime import datetime
 
@@ -46,6 +45,13 @@ class WorkflowEngine:
         """
         self.enable_checkpointing = enable_checkpointing
         self.enable_interrupts = enable_interrupts
+        # execute_async rebuilds this engine in a compile child (#91); the
+        # request's DB session cannot cross the process boundary, so the child
+        # opens its own when this one had one.
+        self._use_db = db_session is not None
+        # "process" or "thread_fallback" after execute_async; routes echo it
+        # in the X-MedScribe-Offload header.
+        self.last_offload_mode: Optional[str] = None
 
         # Build workflow graph with dependency-injected context
         ctx = create_default_context(db_session=db_session)
@@ -139,22 +145,33 @@ class WorkflowEngine:
         thread_id: Optional[str] = None
     ) -> GraphState:
         """
-        Execute workflow asynchronously, streaming node-level events to the
-        pipeline progress store so the /pipeline/status endpoint can surface
-        real-time progress to the React frontend.
+        Execute workflow in a compile child process (#91), streaming
+        node-level events to the pipeline progress store so the
+        /pipeline/status endpoint can surface real-time progress to the
+        React frontend. Progress crosses the process boundary only via Redis.
+
+        Returns ``state`` updated with the keys the compile routes read
+        (``offload.COMPILE_RESULT_KEYS``).
         """
+        from app.core import offload
+
         session_id = state.get("session_id", thread_id or "unknown")
-        config = self._get_config(thread_id or session_id)
 
         # Initialise progress tracking for this session
         pipeline_progress_store.init_pipeline(session_id)
 
         try:
-            loop = asyncio.get_event_loop()
-            final_state = await loop.run_in_executor(
-                None,
-                lambda: self._stream_with_progress(state, config, session_id),
+            outcome = await offload.run_compile(
+                offload.CompileJob(
+                    state=dict(state),
+                    thread_id=thread_id or session_id,
+                    enable_checkpointing=self.enable_checkpointing,
+                    enable_interrupts=self.enable_interrupts,
+                    use_db=self._use_db,
+                )
             )
+            self.last_offload_mode = outcome.mode
+            final_state: GraphState = {**state, **outcome.value}  # type: ignore[typeddict-item]
             return final_state
         except Exception as e:
             pipeline_progress_store.mark_pipeline_failed(session_id, str(e))

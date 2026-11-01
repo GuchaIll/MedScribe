@@ -36,6 +36,20 @@ logger = logging.getLogger(__name__)
 # RapidOCR lazy singleton  (PaddleOCR models via ONNX Runtime)
 # ---------------------------------------------------------------------------
 _rapid_ocr_instance = None
+# ONNX intra-op threads for RapidOCR; None keeps its default (all visible cores).
+_rapid_ocr_threads: Optional[int] = None
+
+
+def set_rapid_ocr_threads(threads: int) -> None:
+    """Cap RapidOCR's ONNX threads. Call before the first OCR in this process."""
+    global _rapid_ocr_threads
+    if isinstance(threads, bool) or not isinstance(threads, int) or threads < 1:
+        raise ValueError(f"set_rapid_ocr_threads: threads must be an int >= 1, got {threads!r}")
+    if _rapid_ocr_instance is not None:
+        logger.warning(
+            "RapidOCR already built; thread cap %d applies only after a restart", threads
+        )
+    _rapid_ocr_threads = threads
 
 
 def _get_paddle_ocr():
@@ -55,7 +69,10 @@ def _get_paddle_ocr():
 
     try:
         from rapidocr_onnxruntime import RapidOCR
-        _rapid_ocr_instance = RapidOCR()
+        kwargs = {}
+        if _rapid_ocr_threads is not None:
+            kwargs = {"intra_op_num_threads": _rapid_ocr_threads, "inter_op_num_threads": 1}
+        _rapid_ocr_instance = RapidOCR(**kwargs)
         return _rapid_ocr_instance
     except ImportError:
         logger.error("rapidocr-onnxruntime is not installed.  pip install rapidocr-onnxruntime")
