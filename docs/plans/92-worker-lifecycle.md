@@ -169,6 +169,37 @@ never inspects it.
    the task stays `leased` with our token). Then run step 4's retry path.
    Increment `ingest_task_retries_total{stage,reason}`.
 
+### Progress watchdog follow-up (2026-11-01)
+
+The lease-renewal heartbeat proves that a worker can still talk to Postgres; it
+does **not** prove that the payload computation is making progress. A blocked
+OCR/native-model call could otherwise renew forever and retain capacity. Add a
+separate progress watchdog to the worker lifecycle:
+
+- `Stage.compute(task, progress)` receives an ephemeral `TaskProgress`
+  reporter. A stage calls `progress.report()` only after a safe unit of forward
+  work. T2's no-op stage reports when compute begins; T5's page stage will
+  report after each page checkpoint has committed.
+- `stale_compute_seconds` is validated configuration. If no report arrives
+  within that interval, a watchdog uses the lease token to record the attempt
+  failure (requeue with backoff or terminal exhaustion hook) and then exits the
+  worker process. Kubernetes' normal `restartPolicy: Always` replaces it.
+- The watchdog never kills merely because a lease renewal was delayed. A lost
+  lease still discards output; a stale-progress deadline is the only hard-exit
+  trigger. Its transition is token-guarded, so a late/zombie worker cannot
+  overwrite a re-claimed task; its later fence rejects.
+- Tests inject the hard-exit function rather than terminating the test runner.
+  They prove a stale task is requeued once, a maximum-attempt task is exhausted
+  once, and a later fence cannot write output.
+
+**Ephemeral-state proof.** `TaskProgress.task_id` is read by watchdog logs;
+`last_reported_monotonic` is read only by that watchdog to compare with
+`stale_compute_seconds`; no field crosses a process, HTTP, database, or queue
+interface. `stale_compute_seconds` is read by `Worker.process` to construct
+the watchdog and crosses only config -> worker. T5's durable page checkpoint
+schema is deliberately not created here: its consumers and idempotency keys
+belong to #93/#98/#59.
+
 `SET LOCAL app.patient_id` (from C.4) is not needed for the no-op stage. The
 engine exposes a `before_commit(conn, task)` hook so T5 can set it when RLS
 tables are written. Note this in the stage docstring.
