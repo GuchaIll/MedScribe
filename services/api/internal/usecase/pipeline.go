@@ -12,6 +12,27 @@ import (
 	"go.uber.org/zap"
 )
 
+const pipelineProgressKeyPrefix = "pipeline:progress:"
+
+// pythonPipelineProgress mirrors the Redis record written by Python's
+// PipelineProgressStore. It intentionally accepts the Python timestamp shape
+// (ISO-8601 strings) before adapting it to the gateway's millisecond contract.
+type pythonPipelineProgress struct {
+	CurrentNode string               `json:"current_node"`
+	Nodes       []pythonNodeProgress `json:"nodes"`
+}
+
+type pythonNodeProgress struct {
+	Name        string   `json:"name"`
+	Label       string   `json:"label"`
+	Phase       string   `json:"phase"`
+	Status      string   `json:"status"`
+	StartedAt   string   `json:"started_at"`
+	CompletedAt string   `json:"completed_at"`
+	DurationMs  *float64 `json:"duration_ms"`
+	Detail      string   `json:"detail"`
+}
+
 // pipelineTriggerMsg is the Kafka message schema for the pipeline.trigger topic.
 // Consumed by the Rust Kafka consumer which forwards to the Go orchestrator.
 type pipelineTriggerMsg struct {
@@ -111,5 +132,90 @@ func (uc *sessionUseCase) GetPipelineStatus(ctx context.Context, sessionID strin
 	if err = json.Unmarshal(data, &status); err != nil {
 		return nil, fmt.Errorf("get pipeline status: unmarshal: %w", err)
 	}
+	if err = uc.mergePipelineProgress(ctx, sessionID, &status); err != nil {
+		// Top-level status is the gateway's lifecycle authority. Detailed
+		// progress improves the response but must not make a completed or failed
+		// run unreadable when the Python writer is unavailable or emitted bad data.
+		uc.log.Warn("failed to merge pipeline progress; returning top-level status",
+			zap.String("session_id", sessionID),
+			zap.Error(err),
+		)
+	}
 	return &status, nil
+}
+
+func (uc *sessionUseCase) mergePipelineProgress(
+	ctx context.Context,
+	sessionID string,
+	status *entity.PipelineStatus,
+) error {
+	if status == nil {
+		return fmt.Errorf("merge pipeline progress: status is required")
+	}
+
+	data, err := uc.redis.Get(ctx, pipelineProgressKey(sessionID)).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			return nil
+		}
+		return fmt.Errorf("read progress: %w", err)
+	}
+
+	var progress pythonPipelineProgress
+	if err = json.Unmarshal(data, &progress); err != nil {
+		return fmt.Errorf("decode progress: %w", err)
+	}
+
+	if progress.CurrentNode != "" && status.Status != "completed" && status.Status != "failed" {
+		status.CurrentNode = progress.CurrentNode
+	}
+	if len(progress.Nodes) == 0 {
+		return nil
+	}
+
+	nodes := make([]entity.NodeProgress, 0, len(progress.Nodes))
+	for _, node := range progress.Nodes {
+		if node.Name == "" || node.Status == "" {
+			return fmt.Errorf("decode progress: node requires name and status")
+		}
+		next := entity.NodeProgress{
+			Name:   node.Name,
+			Label:  node.Label,
+			Phase:  node.Phase,
+			Status: node.Status,
+			Detail: node.Detail,
+		}
+		if node.DurationMs != nil {
+			next.DurationMs = *node.DurationMs
+		}
+		if node.StartedAt != "" {
+			startedAtMs, parseErr := parsePipelineProgressTimestamp(node.StartedAt)
+			if parseErr != nil {
+				return fmt.Errorf("decode progress: node %q started_at: %w", node.Name, parseErr)
+			}
+			next.StartedAtMs = startedAtMs
+		}
+		if node.CompletedAt != "" {
+			completedAtMs, parseErr := parsePipelineProgressTimestamp(node.CompletedAt)
+			if parseErr != nil {
+				return fmt.Errorf("decode progress: node %q completed_at: %w", node.Name, parseErr)
+			}
+			next.CompletedAtMs = &completedAtMs
+		}
+		nodes = append(nodes, next)
+	}
+	status.Nodes = nodes
+	return nil
+}
+
+func parsePipelineProgressTimestamp(value string) (int64, error) {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		// datetime.isoformat() on Python's naive datetime omits the timezone.
+		parsed, err = time.Parse("2006-01-02T15:04:05.999999999", value)
+		if err != nil {
+			return 0, fmt.Errorf("timestamp %q is not ISO-8601: %w", value, err)
+		}
+	}
+	return parsed.UnixMilli(), nil
 }

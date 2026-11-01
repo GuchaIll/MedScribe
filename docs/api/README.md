@@ -2,13 +2,19 @@
 
 ## Overview
 
-MedScribe exposes a FastAPI REST backend on port **3001**. All routes are prefixed with `/api` except where noted.
+The Go gateway on port **8080** is the supported public API ingress. The
+FastAPI process on port **3001** remains an internal migration bridge for the
+LangGraph compile path and legacy OCR implementation; its `/api` routes are
+not a second supported public surface.
 
-This documentation is split by controller file, each covering the endpoints, request/response schemas, and usage examples for one area of the system.
+Read [migration-status.md](migration-status.md) before using a route described
+in this directory. These controller-oriented documents primarily describe the
+legacy Python implementation and are retained only while gateway replacements
+are being delivered.
 
 ---
 
-## Controller Index
+## Legacy controller index
 
 | Controller File | Base Path | Description |
 |-----------------|-----------|-------------|
@@ -19,6 +25,19 @@ This documentation is split by controller file, each covering the endpoints, req
 | [records.md](records.md) | `/api/records` | Medical record generation, preview, feedback-driven regeneration, finalisation, version history |
 | [transcript.md](transcript.md) | `/api/transcript` | Transcript utilities — LLM-based speaker reclassification |
 | [tts.md](tts.md) | `/api/tts` | Text-to-speech synthesis via ElevenLabs |
+
+## Supported public contract
+
+The Go router in `services/api/internal/controller/http/router.go` is the
+authoritative public route list. Its session pipeline status endpoint merges
+the gateway's terminal result with Python's per-node progress record.
+
+- Use `/api/session/{id}/pipeline` to queue a compile run, then poll
+  `/api/session/{id}/pipeline/status`.
+- Do not call FastAPI `/api/session/*`, `/api/records/*`, `/api/clinical/*`,
+  `/api/patient/*`, `/api/tts`, or `/api/transcript/*` from new clients.
+- Internal worker routes are not public contracts: `/internal/pipeline` and
+  `/internal/audio-segment` remain bridge-only until their replacements land.
 
 ---
 

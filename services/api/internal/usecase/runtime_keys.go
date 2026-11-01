@@ -25,6 +25,10 @@ func ocrJobStatusKey(jobID string) string {
 	return fmt.Sprintf("ocr:job:%s", jobID)
 }
 
+func pipelineProgressKey(sessionID string) string {
+	return fmt.Sprintf("%s%s", pipelineProgressKeyPrefix, sessionID)
+}
+
 func assistantCachePrefix(sessionID string) string {
 	return fmt.Sprintf("session:%s:assistant", sessionID)
 }

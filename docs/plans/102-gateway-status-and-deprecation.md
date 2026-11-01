@@ -46,14 +46,26 @@ Out of scope:
 ## Test criteria
 
 Commands:
-- `go test ./internal/usecase/...` passes
-- `go test ./internal/controller/http/...` passes
+- [x] `go test ./internal/usecase/...` passes
+- [x] `go test ./internal/controller/http/...` passes
 
 Acceptance (copied from the issue, one line each):
-- [ ] Gateway status responses include node progress when Python has written it.
-- [ ] A Python failed JSON response leaves the top-level pipeline status failed, not completed.
-- [ ] Tests cover status merge and failed response handling.
-- [ ] API deprecation inventory names legacy/stub routes and removal gates.
+- [x] Gateway status responses include node progress when Python has written it.
+- [x] A Python failed JSON response leaves the top-level pipeline status failed, not completed.
+- [x] Tests cover status merge and failed response handling.
+- [x] API deprecation inventory names legacy/stub routes and removal gates.
+
+## Data-model proof
+
+This change adds no persistent database schema, event, or public request
+model. `pythonPipelineProgress` and `pythonNodeProgress` are private decoder
+types for the existing Python-owned Redis JSON record. Every decoded field has
+an immediate consumer in the existing `entity.PipelineStatus.Nodes` response:
+`current_node`, `name`, `label`, `phase`, `status`, `started_at`,
+`completed_at`, `duration_ms`, and `detail` respectively drive its matching
+gateway response field. Timestamps are adapted from the Python ISO-8601
+contract to the established gateway millisecond fields. No extra field is
+stored or introduced.
 
 ## Risks and open questions
 
