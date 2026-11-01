@@ -515,6 +515,88 @@ func TestPipelineTriggerAndStatus(t *testing.T) {
 	}
 }
 
+func TestPipelineStatusMergesPythonProgress(t *testing.T) {
+	rdb := testRedis(t)
+	uc := NewSessionUseCase(&mockSessionRepo{}, &mockPublisher{}, rdb, testCache(), "pipeline.trigger", zap.NewNop())
+
+	topLevel := entity.PipelineStatus{
+		SessionID:   "s1",
+		PipelineID:  "p1",
+		Status:      "running",
+		StartedAtMs: 1000,
+	}
+	topLevelJSON, err := json.Marshal(topLevel)
+	if err != nil {
+		t.Fatalf("marshal top-level status: %v", err)
+	}
+	if err = rdb.Set(context.Background(), "pipeline:s1", topLevelJSON, time.Hour).Err(); err != nil {
+		t.Fatalf("seed top-level status: %v", err)
+	}
+
+	progress := map[string]any{
+		"current_node": "retrieve_evidence",
+		"nodes": []map[string]any{{
+			"name":         "retrieve_evidence",
+			"label":        "Grounding evidence",
+			"phase":        "extraction",
+			"status":       "completed",
+			"started_at":   "2026-11-01T12:00:00.100000",
+			"completed_at": "2026-11-01T12:00:00.600000",
+			"duration_ms":  500.0,
+			"detail":       "2 evidence items grounded",
+		}},
+	}
+	progressJSON, err := json.Marshal(progress)
+	if err != nil {
+		t.Fatalf("marshal progress: %v", err)
+	}
+	if err = rdb.Set(context.Background(), pipelineProgressKey("s1"), progressJSON, time.Hour).Err(); err != nil {
+		t.Fatalf("seed progress: %v", err)
+	}
+
+	status, err := uc.GetPipelineStatus(context.Background(), "s1")
+	if err != nil {
+		t.Fatalf("get merged status: %v", err)
+	}
+	if status.Status != "running" || status.CurrentNode != "retrieve_evidence" {
+		t.Fatalf("unexpected top-level merge: %+v", status)
+	}
+	if len(status.Nodes) != 1 {
+		t.Fatalf("expected one merged progress node, got %+v", status.Nodes)
+	}
+	node := status.Nodes[0]
+	if node.Name != "retrieve_evidence" || node.Status != "completed" || node.DurationMs != 500 || node.CompletedAtMs == nil {
+		t.Fatalf("unexpected merged progress node: %+v", node)
+	}
+	if node.StartedAtMs != 1793534400100 || *node.CompletedAtMs != 1793534400600 {
+		t.Fatalf("expected Python ISO timestamps to convert to milliseconds, got %+v", node)
+	}
+}
+
+func TestPipelineStatusFallsBackWhenPythonProgressIsMalformed(t *testing.T) {
+	rdb := testRedis(t)
+	uc := NewSessionUseCase(&mockSessionRepo{}, &mockPublisher{}, rdb, testCache(), "pipeline.trigger", zap.NewNop())
+
+	topLevelJSON, err := json.Marshal(entity.PipelineStatus{SessionID: "s1", Status: "completed"})
+	if err != nil {
+		t.Fatalf("marshal top-level status: %v", err)
+	}
+	if err = rdb.Set(context.Background(), "pipeline:s1", topLevelJSON, time.Hour).Err(); err != nil {
+		t.Fatalf("seed top-level status: %v", err)
+	}
+	if err = rdb.Set(context.Background(), pipelineProgressKey("s1"), "{bad-json", time.Hour).Err(); err != nil {
+		t.Fatalf("seed malformed progress: %v", err)
+	}
+
+	status, err := uc.GetPipelineStatus(context.Background(), "s1")
+	if err != nil {
+		t.Fatalf("expected top-level fallback, got %v", err)
+	}
+	if status.Status != "completed" || len(status.Nodes) != 0 {
+		t.Fatalf("unexpected fallback status: %+v", status)
+	}
+}
+
 func TestPipelineFailurePaths(t *testing.T) {
 	t.Run("closed session", func(t *testing.T) {
 		rdb := testRedis(t)

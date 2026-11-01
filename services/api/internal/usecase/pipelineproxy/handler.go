@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -156,6 +157,14 @@ func (h *Handler) Handle(ctx context.Context, key, value []byte) error {
 	var pipelineResp pythonPipelineResponse
 	if err = json.Unmarshal(body, &pipelineResp); err != nil {
 		errMsg := "decode python response: " + err.Error()
+		h.markFailed(ctx, msg.SessionID, msg.PipelineID, errMsg)
+		return fmt.Errorf("pipelineproxy: %s", errMsg)
+	}
+	if strings.EqualFold(strings.TrimSpace(pipelineResp.Status), "failed") {
+		// The Python bridge currently represents graph failures as a 200 response
+		// with a declared failed status. Do not turn that application failure into
+		// a successful gateway completion or expose its exception text to callers.
+		const errMsg = "python pipeline declared failure"
 		h.markFailed(ctx, msg.SessionID, msg.PipelineID, errMsg)
 		return fmt.Errorf("pipelineproxy: %s", errMsg)
 	}
