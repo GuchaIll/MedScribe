@@ -1,0 +1,11 @@
+RHEUMATOLOGY PROGRESS NOTE
+Date: 2026-03-03. Synthetic record for evaluation only.
+
+45-year-old woman with seropositive rheumatoid arthritis diagnosed in 2023, rheumatoid factor positive and anti-CCP antibody 190 units. She reports morning stiffness lasting about 90 minutes and swelling in both wrists and the second and third knuckles of each hand. She is having trouble opening jars at her bakery job.
+
+Exam: 8 tender and 6 swollen joints. DAS28-CRP 5.1, high disease activity.
+
+Current therapy is methotrexate 15 mg orally once weekly on Sundays with folic acid 1 mg daily, and hydroxychloroquine 200 mg twice daily. She has been on this combination for nine months without reaching low disease activity.
+
+Plan
+Add adalimumab 40 mg subcutaneous injection every two weeks. Before starting, QuantiFERON-TB Gold and hepatitis B serologies were obtained; both negative. Give pneumococcal and recombinant zoster vaccines before the first dose; live vaccines are now contraindicated. Short prednisone bridge 10 mg daily for two weeks, then 5 mg for two weeks, then stop. Hold adalimumab during any infection with fever.

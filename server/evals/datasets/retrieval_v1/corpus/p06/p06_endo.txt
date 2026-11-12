@@ -1,0 +1,17 @@
+ENDOCRINOLOGY CLINIC NOTE
+Date: 2026-02-03. Synthetic record for evaluation only.
+
+Type 1 diabetes, recent DKA. Hemoglobin A1c 10.2 percent. He has been skipping lunchtime boluses at his construction job.
+
+Insulin regimen
+Insulin glargine 22 units subcutaneously at bedtime.
+Insulin lispro with meals, insulin-to-carbohydrate ratio 1 unit per 10 grams of carbohydrate.
+Correction factor 1 unit of lispro for every 40 mg/dL above 150 mg/dL.
+
+He was started on a continuous glucose monitor with a low alert at 70 mg/dL and a high alert at 250 mg/dL. Glucagon nasal powder 3 mg prescribed for severe hypoglycemia; a coworker was shown how to give it.
+
+Screening
+Celiac disease screen with tissue transglutaminase IgA was negative with normal total IgA. TSH 1.9 mIU/L. Urine albumin-to-creatinine ratio 12 mg/g, normal. Dilated retinal exam in 2025 showed mild nonproliferative retinopathy.
+
+Plan
+Discussed an insulin pump with automated insulin delivery; he will consider it after three months of CGM use. Follow-up in three months with CGM download.

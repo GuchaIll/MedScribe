@@ -1,0 +1,12 @@
+OPHTHALMOLOGY SCREENING REPORT
+Date: 2026-08-11. Synthetic record for evaluation only.
+
+Reason: baseline and annual screening for hydroxychloroquine retinal toxicity.
+
+Hydroxychloroquine dose is 400 mg per day. Body weight is 70 kg, so the dose is 5.7 mg/kg of actual body weight, slightly above the recommended maximum of 5 mg/kg per day.
+
+Visual acuity 20/20 in both eyes. Spectral-domain OCT shows normal ellipsoid zone without parafoveal thinning. Automated 10-2 visual fields are full. Fundus autofluorescence is normal.
+
+Impression: no evidence of hydroxychloroquine retinopathy.
+
+Recommendation: reduce hydroxychloroquine to 300 mg daily, for example 200 mg and 400 mg on alternating days, to stay under 5 mg/kg. Annual screening should continue after five years of use, sooner given the dose. Tell rheumatology about this recommendation.

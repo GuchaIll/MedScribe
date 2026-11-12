@@ -1,0 +1,20 @@
+run_id=27d95764aec5
+generated_at_utc=2026-11-12T06:29:29Z
+dataset_version=retrieval_v1
+dataset_dir=evals/datasets/retrieval_v1
+embedding_model=FremyCompany/BioLord-2023-M
+rrf_k=60
+dense_threshold=0.3
+chunker=app.agents.nodes.segment.chunk_documents (500 chars, 50 overlap)
+database=localhost:55432/medscribe_eval
+postgres_version=15.19 (Debian 15.19-1.pgdg12+2)
+pgvector_version=0.8.7
+ivfflat_probes=1
+dense_plan_uses_ivfflat=false
+dense_plan=Limit  (cost=11.65..11.66 rows=4 width=35) | ->  Sort  (cost=11.65..11.66 rows=4 width=35) | Sort Key: ((ce.embedding <=> '<query_vec>'::vector)) | ->  Nested Loop  (cost=0.14..11.61 rows=4 width=35) | ->  Seq Scan on sessions s  (cost=0.00..1.12 rows=1 width=11) | Filter: ((patient_id)::text = 'evalr1-p01'::text) | ->  Index Scan using idx_chk_session on chunk_embeddings ce  (cost=0.14..10.42 rows=4 width=48) | Index Cond: ((session_id)::text = (s.id)::text) | Filter: (('1'::double precision - (embedding <=> '<query_vec>'::vector)) >= '0.3'::double precision)
+python=3.12.13
+torch=2.2.0
+sentence_transformers=2.3.1
+platform=macOS-26.6.2-arm64-arm-64bit
+machine=arm64
+duration_s=14.4

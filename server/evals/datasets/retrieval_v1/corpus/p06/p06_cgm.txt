@@ -1,0 +1,17 @@
+CGM DOWNLOAD REVIEW
+Review date: 2026-05-05, data from the prior 14 days. Synthetic record for evaluation only.
+
+Sensor active 96 percent of the time.
+Mean glucose 178 mg/dL. Glucose management indicator 7.6 percent.
+Time in range 70 to 180 mg/dL: 58 percent (goal above 70 percent).
+Time above 180: 34 percent. Time above 250: 9 percent.
+Time below 70: 6 percent. Time below 54: 2 percent (goal below 1 percent).
+Coefficient of variation 41 percent, high glycemic variability.
+
+Pattern: recurrent lows between 2 and 4 a.m. after evening basketball games, and post-lunch highs on workdays.
+
+Changes
+Reduce insulin glargine from 22 to 20 units at bedtime.
+On basketball nights, take 30 grams of carbohydrate without bolus at bedtime.
+Set a phone reminder for the lunch bolus.
+Recheck CGM in four weeks.

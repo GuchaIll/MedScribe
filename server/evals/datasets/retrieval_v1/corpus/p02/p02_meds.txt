@@ -1,0 +1,18 @@
+DISCHARGE MEDICATION LIST
+2026-05-09. Synthetic record for evaluation only.
+
+New
+Sacubitril-valsartan 24/26 mg, one tablet twice daily. Lisinopril was stopped 36 hours before the first dose to avoid angioedema.
+Dapagliflozin 10 mg, one tablet daily.
+
+Changed
+Metoprolol succinate increased from 25 mg to 50 mg daily for rate control.
+Furosemide 40 mg by mouth daily, was 20 mg before admission.
+
+Continued
+Apixaban 5 mg twice daily for stroke prevention in atrial fibrillation. Dose criteria reviewed: age under 80, weight above 60 kg, creatinine 1.3, so the full dose is appropriate.
+Potassium chloride 10 mEq daily while on furosemide.
+
+Stopped
+Lisinopril 10 mg daily, replaced by sacubitril-valsartan.
+Diltiazem 120 mg daily, stopped because it is a negative inotrope in reduced ejection fraction.

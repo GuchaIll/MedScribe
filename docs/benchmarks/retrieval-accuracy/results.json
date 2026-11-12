@@ -1,0 +1,1779 @@
+{
+  "dataset_version": "retrieval_v1",
+  "corpus": {
+    "patients": 10,
+    "documents": 40,
+    "chunks": 107,
+    "chunks_per_patient_min": 9,
+    "chunks_per_patient_max": 13,
+    "queries": 100,
+    "positive_queries": 88,
+    "negative_queries": 12
+  },
+  "retriever": {
+    "entry_point": "HybridRetrievalService.search_chunks_for_patient",
+    "calls_per_query": "top_k=5 (recall@1, recall@5) and top_k=10 (recall@10, mrr@10)"
+  },
+  "hybrid": {
+    "overall": {
+      "n": 88,
+      "recall_at_1": {
+        "value": 0.6705,
+        "ci95": [
+          0.5682,
+          0.7614
+        ]
+      },
+      "recall_at_5": {
+        "value": 0.9432,
+        "ci95": [
+          0.8864,
+          0.9886
+        ]
+      },
+      "recall_at_10": {
+        "value": 0.9432,
+        "ci95": [
+          0.8864,
+          0.9886
+        ]
+      },
+      "mrr_at_10": {
+        "value": 0.7848,
+        "ci95": [
+          0.7161,
+          0.8508
+        ]
+      }
+    },
+    "by_stratum": {
+      "exact_term": {
+        "n": 22,
+        "recall_at_1": {
+          "value": 0.8182,
+          "ci95": [
+            0.6364,
+            0.9545
+          ]
+        },
+        "recall_at_5": {
+          "value": 1.0,
+          "ci95": [
+            1.0,
+            1.0
+          ]
+        },
+        "recall_at_10": {
+          "value": 1.0,
+          "ci95": [
+            1.0,
+            1.0
+          ]
+        },
+        "mrr_at_10": {
+          "value": 0.8977,
+          "ci95": [
+            0.7955,
+            0.9773
+          ]
+        }
+      },
+      "paraphrase": {
+        "n": 22,
+        "recall_at_1": {
+          "value": 0.6364,
+          "ci95": [
+            0.4545,
+            0.8182
+          ]
+        },
+        "recall_at_5": {
+          "value": 0.7727,
+          "ci95": [
+            0.5909,
+            0.9545
+          ]
+        },
+        "recall_at_10": {
+          "value": 0.7727,
+          "ci95": [
+            0.5909,
+            0.9545
+          ]
+        },
+        "mrr_at_10": {
+          "value": 0.6818,
+          "ci95": [
+            0.5,
+            0.8485
+          ]
+        }
+      },
+      "numeric": {
+        "n": 22,
+        "recall_at_1": {
+          "value": 0.5909,
+          "ci95": [
+            0.3636,
+            0.7727
+          ]
+        },
+        "recall_at_5": {
+          "value": 1.0,
+          "ci95": [
+            1.0,
+            1.0
+          ]
+        },
+        "recall_at_10": {
+          "value": 1.0,
+          "ci95": [
+            1.0,
+            1.0
+          ]
+        },
+        "mrr_at_10": {
+          "value": 0.7606,
+          "ci95": [
+            0.6242,
+            0.8864
+          ]
+        }
+      },
+      "medication": {
+        "n": 22,
+        "recall_at_1": {
+          "value": 0.6364,
+          "ci95": [
+            0.4091,
+            0.8182
+          ]
+        },
+        "recall_at_5": {
+          "value": 1.0,
+          "ci95": [
+            1.0,
+            1.0
+          ]
+        },
+        "recall_at_10": {
+          "value": 1.0,
+          "ci95": [
+            1.0,
+            1.0
+          ]
+        },
+        "mrr_at_10": {
+          "value": 0.7992,
+          "ci95": [
+            0.678,
+            0.9015
+          ]
+        }
+      }
+    }
+  },
+  "random_baseline": {
+    "recall_at_1": 0.1131,
+    "recall_at_5": 0.5237,
+    "recall_at_10": 0.945,
+    "note": "expected recall if k chunks were drawn at random from the patient's own pool"
+  },
+  "dense_leg": {
+    "n": 88,
+    "recall_at_1": {
+      "value": 0.4432,
+      "ci95": [
+        0.3409,
+        0.5455
+      ]
+    },
+    "recall_at_5": {
+      "value": 0.6364,
+      "ci95": [
+        0.5341,
+        0.7273
+      ]
+    },
+    "recall_at_10": {
+      "value": 0.6364,
+      "ci95": [
+        0.5341,
+        0.7273
+      ]
+    },
+    "mrr_at_10": {
+      "value": 0.5284,
+      "ci95": [
+        0.4366,
+        0.6203
+      ]
+    }
+  },
+  "sparse_leg": {
+    "n": 88,
+    "recall_at_1": {
+      "value": 0.7159,
+      "ci95": [
+        0.6136,
+        0.8068
+      ]
+    },
+    "recall_at_5": {
+      "value": 0.8977,
+      "ci95": [
+        0.8295,
+        0.9545
+      ]
+    },
+    "recall_at_10": {
+      "value": 0.8977,
+      "ci95": [
+        0.8295,
+        0.9545
+      ]
+    },
+    "mrr_at_10": {
+      "value": 0.7939,
+      "ci95": [
+        0.7182,
+        0.8621
+      ]
+    }
+  },
+  "dense_leg_empty_on_positives": 20,
+  "sparse_leg_empty_on_positives": 2,
+  "returned_median_all_queries": {
+    "top_k5": 3.0,
+    "top_k10": 3.0,
+    "dense_leg_k10": 2.0,
+    "sparse_leg_k10": 3.0,
+    "note": "the dense leg drops rows below cosine 0.30, so lists are often shorter than k"
+  },
+  "negatives": {
+    "n": 12,
+    "nonempty_rate": {
+      "value": 0.4167,
+      "ci95": [
+        0.1667,
+        0.6667
+      ]
+    }
+  },
+  "leakage": {
+    "foreign_chunks_returned": 0
+  },
+  "latency_ms_top_k5": {
+    "p50": 20.8,
+    "p95": 70.95,
+    "note": "end to end in-process: query embedding + both SQL legs + RRF"
+  },
+  "bootstrap": {
+    "resamples": 2000,
+    "seed": 104,
+    "method": "percentile, 95%"
+  },
+  "per_query": [
+    {
+      "query_id": "p01-q01",
+      "patient_id": "p01",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 4,
+      "returned_k10": 4,
+      "returned_dense": 2,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 65.52
+    },
+    {
+      "query_id": "p01-q02",
+      "patient_id": "p01",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 1,
+      "returned_k10": 1,
+      "returned_dense": 0,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 16.89
+    },
+    {
+      "query_id": "p01-q03",
+      "patient_id": "p01",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 6,
+      "returned_dense": 2,
+      "returned_sparse": 6,
+      "leaks": 0,
+      "latency_ms_k5": 71.0
+    },
+    {
+      "query_id": "p01-q04",
+      "patient_id": "p01",
+      "stratum": "paraphrase",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 5,
+      "returned_k10": 6,
+      "returned_dense": 6,
+      "returned_sparse": 0,
+      "leaks": 0,
+      "latency_ms_k5": 73.18
+    },
+    {
+      "query_id": "p01-q05",
+      "patient_id": "p01",
+      "stratum": "paraphrase",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": null,
+      "returned_k5": 5,
+      "returned_k10": 9,
+      "returned_dense": 4,
+      "returned_sparse": 5,
+      "leaks": 0,
+      "latency_ms_k5": 74.01
+    },
+    {
+      "query_id": "p01-q06",
+      "patient_id": "p01",
+      "stratum": "numeric",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 2,
+      "returned_k5": 5,
+      "returned_k10": 8,
+      "returned_dense": 8,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 31.25
+    },
+    {
+      "query_id": "p01-q07",
+      "patient_id": "p01",
+      "stratum": "numeric",
+      "rank_k5": 3,
+      "rank_k10": 3,
+      "dense_rank": 4,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 10,
+      "returned_dense": 5,
+      "returned_sparse": 10,
+      "leaks": 0,
+      "latency_ms_k5": 30.8
+    },
+    {
+      "query_id": "p01-q08",
+      "patient_id": "p01",
+      "stratum": "medication",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 5,
+      "returned_dense": 5,
+      "returned_sparse": 4,
+      "leaks": 0,
+      "latency_ms_k5": 67.95
+    },
+    {
+      "query_id": "p01-q09",
+      "patient_id": "p01",
+      "stratum": "medication",
+      "rank_k5": 4,
+      "rank_k10": 4,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 7,
+      "returned_dense": 4,
+      "returned_sparse": 6,
+      "leaks": 0,
+      "latency_ms_k5": 20.44
+    },
+    {
+      "query_id": "p01-q10",
+      "patient_id": "p01",
+      "stratum": "negative",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 1,
+      "returned_k10": 1,
+      "returned_dense": 0,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 27.28
+    },
+    {
+      "query_id": "p02-q01",
+      "patient_id": "p02",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 6,
+      "returned_dense": 3,
+      "returned_sparse": 5,
+      "leaks": 0,
+      "latency_ms_k5": 70.9
+    },
+    {
+      "query_id": "p02-q02",
+      "patient_id": "p02",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 1,
+      "returned_k10": 1,
+      "returned_dense": 0,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 18.02
+    },
+    {
+      "query_id": "p02-q03",
+      "patient_id": "p02",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 1,
+      "returned_k10": 1,
+      "returned_dense": 0,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 15.33
+    },
+    {
+      "query_id": "p02-q04",
+      "patient_id": "p02",
+      "stratum": "paraphrase",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 0,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 28.52
+    },
+    {
+      "query_id": "p02-q05",
+      "patient_id": "p02",
+      "stratum": "paraphrase",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": null,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 1,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 70.95
+    },
+    {
+      "query_id": "p02-q06",
+      "patient_id": "p02",
+      "stratum": "numeric",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 6,
+      "returned_dense": 0,
+      "returned_sparse": 6,
+      "leaks": 0,
+      "latency_ms_k5": 18.7
+    },
+    {
+      "query_id": "p02-q07",
+      "patient_id": "p02",
+      "stratum": "numeric",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 6,
+      "returned_dense": 4,
+      "returned_sparse": 6,
+      "leaks": 0,
+      "latency_ms_k5": 70.06
+    },
+    {
+      "query_id": "p02-q08",
+      "patient_id": "p02",
+      "stratum": "medication",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 1,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 29.05
+    },
+    {
+      "query_id": "p02-q09",
+      "patient_id": "p02",
+      "stratum": "medication",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 2,
+      "returned_k5": 4,
+      "returned_k10": 4,
+      "returned_dense": 3,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 62.03
+    },
+    {
+      "query_id": "p02-q10",
+      "patient_id": "p02",
+      "stratum": "negative",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 0,
+      "returned_k10": 0,
+      "returned_dense": 0,
+      "returned_sparse": 0,
+      "leaks": 0,
+      "latency_ms_k5": 22.62
+    },
+    {
+      "query_id": "p03-q01",
+      "patient_id": "p03",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 1,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 25.89
+    },
+    {
+      "query_id": "p03-q02",
+      "patient_id": "p03",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 9,
+      "returned_dense": 5,
+      "returned_sparse": 9,
+      "leaks": 0,
+      "latency_ms_k5": 16.86
+    },
+    {
+      "query_id": "p03-q03",
+      "patient_id": "p03",
+      "stratum": "paraphrase",
+      "rank_k5": 3,
+      "rank_k10": 3,
+      "dense_rank": null,
+      "sparse_rank": 2,
+      "returned_k5": 4,
+      "returned_k10": 4,
+      "returned_dense": 2,
+      "returned_sparse": 4,
+      "leaks": 0,
+      "latency_ms_k5": 20.0
+    },
+    {
+      "query_id": "p03-q04",
+      "patient_id": "p03",
+      "stratum": "paraphrase",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": null,
+      "returned_k5": 5,
+      "returned_k10": 5,
+      "returned_dense": 5,
+      "returned_sparse": 0,
+      "leaks": 0,
+      "latency_ms_k5": 17.38
+    },
+    {
+      "query_id": "p03-q05",
+      "patient_id": "p03",
+      "stratum": "paraphrase",
+      "rank_k5": 3,
+      "rank_k10": 3,
+      "dense_rank": null,
+      "sparse_rank": 3,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 0,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 19.29
+    },
+    {
+      "query_id": "p03-q06",
+      "patient_id": "p03",
+      "stratum": "numeric",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 4,
+      "returned_k10": 4,
+      "returned_dense": 2,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 21.97
+    },
+    {
+      "query_id": "p03-q07",
+      "patient_id": "p03",
+      "stratum": "numeric",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 1,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 23.89
+    },
+    {
+      "query_id": "p03-q08",
+      "patient_id": "p03",
+      "stratum": "medication",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 2,
+      "sparse_rank": 1,
+      "returned_k5": 4,
+      "returned_k10": 4,
+      "returned_dense": 4,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 27.28
+    },
+    {
+      "query_id": "p03-q09",
+      "patient_id": "p03",
+      "stratum": "medication",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 8,
+      "returned_dense": 6,
+      "returned_sparse": 5,
+      "leaks": 0,
+      "latency_ms_k5": 88.32
+    },
+    {
+      "query_id": "p03-q10",
+      "patient_id": "p03",
+      "stratum": "negative",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 1,
+      "returned_k10": 1,
+      "returned_dense": 0,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 15.98
+    },
+    {
+      "query_id": "p04-q01",
+      "patient_id": "p04",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 3,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 16.37
+    },
+    {
+      "query_id": "p04-q02",
+      "patient_id": "p04",
+      "stratum": "exact_term",
+      "rank_k5": 2,
+      "rank_k10": 2,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 1,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 17.14
+    },
+    {
+      "query_id": "p04-q03",
+      "patient_id": "p04",
+      "stratum": "paraphrase",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 1,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 23.31
+    },
+    {
+      "query_id": "p04-q04",
+      "patient_id": "p04",
+      "stratum": "paraphrase",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 7,
+      "returned_dense": 5,
+      "returned_sparse": 6,
+      "leaks": 0,
+      "latency_ms_k5": 90.93
+    },
+    {
+      "query_id": "p04-q05",
+      "patient_id": "p04",
+      "stratum": "paraphrase",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 1,
+      "returned_k10": 1,
+      "returned_dense": 1,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 16.04
+    },
+    {
+      "query_id": "p04-q06",
+      "patient_id": "p04",
+      "stratum": "numeric",
+      "rank_k5": 2,
+      "rank_k10": 2,
+      "dense_rank": 2,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 5,
+      "returned_dense": 4,
+      "returned_sparse": 5,
+      "leaks": 0,
+      "latency_ms_k5": 17.35
+    },
+    {
+      "query_id": "p04-q07",
+      "patient_id": "p04",
+      "stratum": "numeric",
+      "rank_k5": 5,
+      "rank_k10": 5,
+      "dense_rank": null,
+      "sparse_rank": 5,
+      "returned_k5": 5,
+      "returned_k10": 5,
+      "returned_dense": 2,
+      "returned_sparse": 5,
+      "leaks": 0,
+      "latency_ms_k5": 66.27
+    },
+    {
+      "query_id": "p04-q08",
+      "patient_id": "p04",
+      "stratum": "medication",
+      "rank_k5": 2,
+      "rank_k10": 2,
+      "dense_rank": 3,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 10,
+      "returned_dense": 8,
+      "returned_sparse": 9,
+      "leaks": 0,
+      "latency_ms_k5": 33.08
+    },
+    {
+      "query_id": "p04-q09",
+      "patient_id": "p04",
+      "stratum": "medication",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 8,
+      "returned_dense": 4,
+      "returned_sparse": 8,
+      "leaks": 0,
+      "latency_ms_k5": 17.9
+    },
+    {
+      "query_id": "p04-q10",
+      "patient_id": "p04",
+      "stratum": "negative",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 0,
+      "returned_k10": 0,
+      "returned_dense": 0,
+      "returned_sparse": 0,
+      "leaks": 0,
+      "latency_ms_k5": 16.99
+    },
+    {
+      "query_id": "p05-q01",
+      "patient_id": "p05",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 1,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 15.95
+    },
+    {
+      "query_id": "p05-q02",
+      "patient_id": "p05",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 0,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 15.97
+    },
+    {
+      "query_id": "p05-q03",
+      "patient_id": "p05",
+      "stratum": "paraphrase",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 4,
+      "returned_k10": 4,
+      "returned_dense": 0,
+      "returned_sparse": 4,
+      "leaks": 0,
+      "latency_ms_k5": 25.57
+    },
+    {
+      "query_id": "p05-q04",
+      "patient_id": "p05",
+      "stratum": "paraphrase",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 1,
+      "returned_k10": 1,
+      "returned_dense": 0,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 24.71
+    },
+    {
+      "query_id": "p05-q05",
+      "patient_id": "p05",
+      "stratum": "numeric",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 2,
+      "sparse_rank": 1,
+      "returned_k5": 4,
+      "returned_k10": 4,
+      "returned_dense": 2,
+      "returned_sparse": 4,
+      "leaks": 0,
+      "latency_ms_k5": 22.14
+    },
+    {
+      "query_id": "p05-q06",
+      "patient_id": "p05",
+      "stratum": "numeric",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 3,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 6,
+      "returned_dense": 5,
+      "returned_sparse": 6,
+      "leaks": 0,
+      "latency_ms_k5": 27.3
+    },
+    {
+      "query_id": "p05-q07",
+      "patient_id": "p05",
+      "stratum": "numeric",
+      "rank_k5": 5,
+      "rank_k10": 5,
+      "dense_rank": null,
+      "sparse_rank": 3,
+      "returned_k5": 5,
+      "returned_k10": 5,
+      "returned_dense": 3,
+      "returned_sparse": 5,
+      "leaks": 0,
+      "latency_ms_k5": 17.88
+    },
+    {
+      "query_id": "p05-q08",
+      "patient_id": "p05",
+      "stratum": "medication",
+      "rank_k5": 2,
+      "rank_k10": 2,
+      "dense_rank": 2,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 8,
+      "returned_dense": 4,
+      "returned_sparse": 8,
+      "leaks": 0,
+      "latency_ms_k5": 17.77
+    },
+    {
+      "query_id": "p05-q09",
+      "patient_id": "p05",
+      "stratum": "medication",
+      "rank_k5": 2,
+      "rank_k10": 2,
+      "dense_rank": 2,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 8,
+      "returned_dense": 3,
+      "returned_sparse": 8,
+      "leaks": 0,
+      "latency_ms_k5": 18.85
+    },
+    {
+      "query_id": "p05-q10",
+      "patient_id": "p05",
+      "stratum": "negative",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 1,
+      "returned_k10": 1,
+      "returned_dense": 1,
+      "returned_sparse": 0,
+      "leaks": 0,
+      "latency_ms_k5": 26.14
+    },
+    {
+      "query_id": "p06-q01",
+      "patient_id": "p06",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 2,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 16.38
+    },
+    {
+      "query_id": "p06-q02",
+      "patient_id": "p06",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 2,
+      "sparse_rank": 1,
+      "returned_k5": 4,
+      "returned_k10": 4,
+      "returned_dense": 4,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 16.04
+    },
+    {
+      "query_id": "p06-q03",
+      "patient_id": "p06",
+      "stratum": "paraphrase",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 0,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 16.96
+    },
+    {
+      "query_id": "p06-q04",
+      "patient_id": "p06",
+      "stratum": "paraphrase",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 10,
+      "returned_dense": 10,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 20.8
+    },
+    {
+      "query_id": "p06-q05",
+      "patient_id": "p06",
+      "stratum": "numeric",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 0,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 21.62
+    },
+    {
+      "query_id": "p06-q06",
+      "patient_id": "p06",
+      "stratum": "numeric",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 1,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 24.44
+    },
+    {
+      "query_id": "p06-q07",
+      "patient_id": "p06",
+      "stratum": "numeric",
+      "rank_k5": 2,
+      "rank_k10": 2,
+      "dense_rank": 2,
+      "sparse_rank": 3,
+      "returned_k5": 5,
+      "returned_k10": 9,
+      "returned_dense": 9,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 25.29
+    },
+    {
+      "query_id": "p06-q08",
+      "patient_id": "p06",
+      "stratum": "medication",
+      "rank_k5": 2,
+      "rank_k10": 2,
+      "dense_rank": 4,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 5,
+      "returned_dense": 4,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 23.67
+    },
+    {
+      "query_id": "p06-q09",
+      "patient_id": "p06",
+      "stratum": "medication",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 10,
+      "returned_dense": 10,
+      "returned_sparse": 6,
+      "leaks": 0,
+      "latency_ms_k5": 22.21
+    },
+    {
+      "query_id": "p06-q10",
+      "patient_id": "p06",
+      "stratum": "negative",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 0,
+      "returned_k10": 0,
+      "returned_dense": 0,
+      "returned_sparse": 0,
+      "leaks": 0,
+      "latency_ms_k5": 24.18
+    },
+    {
+      "query_id": "p07-q01",
+      "patient_id": "p07",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 0,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 23.59
+    },
+    {
+      "query_id": "p07-q02",
+      "patient_id": "p07",
+      "stratum": "exact_term",
+      "rank_k5": 2,
+      "rank_k10": 2,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 1,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 28.0
+    },
+    {
+      "query_id": "p07-q03",
+      "patient_id": "p07",
+      "stratum": "paraphrase",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 1,
+      "returned_k10": 1,
+      "returned_dense": 0,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 19.27
+    },
+    {
+      "query_id": "p07-q04",
+      "patient_id": "p07",
+      "stratum": "paraphrase",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": null,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 1,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 17.3
+    },
+    {
+      "query_id": "p07-q05",
+      "patient_id": "p07",
+      "stratum": "numeric",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 2,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 18.32
+    },
+    {
+      "query_id": "p07-q06",
+      "patient_id": "p07",
+      "stratum": "numeric",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 2,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 20.04
+    },
+    {
+      "query_id": "p07-q07",
+      "patient_id": "p07",
+      "stratum": "medication",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 2,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 22.5
+    },
+    {
+      "query_id": "p07-q08",
+      "patient_id": "p07",
+      "stratum": "medication",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 1,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 21.15
+    },
+    {
+      "query_id": "p07-q09",
+      "patient_id": "p07",
+      "stratum": "medication",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 0,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 24.3
+    },
+    {
+      "query_id": "p07-q10",
+      "patient_id": "p07",
+      "stratum": "negative",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 0,
+      "returned_k10": 0,
+      "returned_dense": 0,
+      "returned_sparse": 0,
+      "leaks": 0,
+      "latency_ms_k5": 14.08
+    },
+    {
+      "query_id": "p08-q01",
+      "patient_id": "p08",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 0,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 15.58
+    },
+    {
+      "query_id": "p08-q02",
+      "patient_id": "p08",
+      "stratum": "exact_term",
+      "rank_k5": 4,
+      "rank_k10": 4,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 4,
+      "returned_k10": 4,
+      "returned_dense": 3,
+      "returned_sparse": 4,
+      "leaks": 0,
+      "latency_ms_k5": 16.75
+    },
+    {
+      "query_id": "p08-q03",
+      "patient_id": "p08",
+      "stratum": "paraphrase",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 5,
+      "returned_dense": 2,
+      "returned_sparse": 5,
+      "leaks": 0,
+      "latency_ms_k5": 19.78
+    },
+    {
+      "query_id": "p08-q04",
+      "patient_id": "p08",
+      "stratum": "paraphrase",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 2,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 6,
+      "returned_dense": 4,
+      "returned_sparse": 5,
+      "leaks": 0,
+      "latency_ms_k5": 18.87
+    },
+    {
+      "query_id": "p08-q05",
+      "patient_id": "p08",
+      "stratum": "numeric",
+      "rank_k5": 2,
+      "rank_k10": 2,
+      "dense_rank": 2,
+      "sparse_rank": 1,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 2,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 21.3
+    },
+    {
+      "query_id": "p08-q06",
+      "patient_id": "p08",
+      "stratum": "numeric",
+      "rank_k5": 2,
+      "rank_k10": 2,
+      "dense_rank": null,
+      "sparse_rank": 2,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 0,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 21.67
+    },
+    {
+      "query_id": "p08-q07",
+      "patient_id": "p08",
+      "stratum": "medication",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 0,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 24.52
+    },
+    {
+      "query_id": "p08-q08",
+      "patient_id": "p08",
+      "stratum": "medication",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 2,
+      "returned_k5": 5,
+      "returned_k10": 7,
+      "returned_dense": 5,
+      "returned_sparse": 6,
+      "leaks": 0,
+      "latency_ms_k5": 18.16
+    },
+    {
+      "query_id": "p08-q09",
+      "patient_id": "p08",
+      "stratum": "medication",
+      "rank_k5": 2,
+      "rank_k10": 2,
+      "dense_rank": 2,
+      "sparse_rank": 3,
+      "returned_k5": 4,
+      "returned_k10": 4,
+      "returned_dense": 4,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 18.63
+    },
+    {
+      "query_id": "p08-q10",
+      "patient_id": "p08",
+      "stratum": "negative",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 0,
+      "returned_k10": 0,
+      "returned_dense": 0,
+      "returned_sparse": 0,
+      "leaks": 0,
+      "latency_ms_k5": 18.68
+    },
+    {
+      "query_id": "p09-q01",
+      "patient_id": "p09",
+      "stratum": "exact_term",
+      "rank_k5": 2,
+      "rank_k10": 2,
+      "dense_rank": 2,
+      "sparse_rank": 1,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 3,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 25.68
+    },
+    {
+      "query_id": "p09-q02",
+      "patient_id": "p09",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 1,
+      "returned_k10": 1,
+      "returned_dense": 0,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 21.83
+    },
+    {
+      "query_id": "p09-q03",
+      "patient_id": "p09",
+      "stratum": "paraphrase",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 6,
+      "returned_dense": 3,
+      "returned_sparse": 6,
+      "leaks": 0,
+      "latency_ms_k5": 28.59
+    },
+    {
+      "query_id": "p09-q04",
+      "patient_id": "p09",
+      "stratum": "paraphrase",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 1,
+      "returned_k10": 1,
+      "returned_dense": 0,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 17.55
+    },
+    {
+      "query_id": "p09-q05",
+      "patient_id": "p09",
+      "stratum": "numeric",
+      "rank_k5": 2,
+      "rank_k10": 2,
+      "dense_rank": null,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 5,
+      "returned_dense": 2,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 20.23
+    },
+    {
+      "query_id": "p09-q06",
+      "patient_id": "p09",
+      "stratum": "numeric",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 2,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 18.29
+    },
+    {
+      "query_id": "p09-q07",
+      "patient_id": "p09",
+      "stratum": "medication",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 6,
+      "returned_dense": 5,
+      "returned_sparse": 4,
+      "leaks": 0,
+      "latency_ms_k5": 23.19
+    },
+    {
+      "query_id": "p09-q08",
+      "patient_id": "p09",
+      "stratum": "medication",
+      "rank_k5": 2,
+      "rank_k10": 2,
+      "dense_rank": null,
+      "sparse_rank": 2,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 0,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 28.56
+    },
+    {
+      "query_id": "p09-q09",
+      "patient_id": "p09",
+      "stratum": "negative",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 4,
+      "returned_k10": 4,
+      "returned_dense": 0,
+      "returned_sparse": 4,
+      "leaks": 0,
+      "latency_ms_k5": 15.25
+    },
+    {
+      "query_id": "p09-q10",
+      "patient_id": "p09",
+      "stratum": "negative",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 0,
+      "returned_k10": 0,
+      "returned_dense": 0,
+      "returned_sparse": 0,
+      "leaks": 0,
+      "latency_ms_k5": 16.39
+    },
+    {
+      "query_id": "p10-q01",
+      "patient_id": "p10",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 1,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 16.82
+    },
+    {
+      "query_id": "p10-q02",
+      "patient_id": "p10",
+      "stratum": "exact_term",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 2,
+      "returned_k10": 2,
+      "returned_dense": 1,
+      "returned_sparse": 2,
+      "leaks": 0,
+      "latency_ms_k5": 18.12
+    },
+    {
+      "query_id": "p10-q03",
+      "patient_id": "p10",
+      "stratum": "paraphrase",
+      "rank_k5": 3,
+      "rank_k10": 3,
+      "dense_rank": 3,
+      "sparse_rank": 2,
+      "returned_k5": 5,
+      "returned_k10": 5,
+      "returned_dense": 4,
+      "returned_sparse": 5,
+      "leaks": 0,
+      "latency_ms_k5": 23.6
+    },
+    {
+      "query_id": "p10-q04",
+      "patient_id": "p10",
+      "stratum": "paraphrase",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 2,
+      "returned_k5": 4,
+      "returned_k10": 4,
+      "returned_dense": 4,
+      "returned_sparse": 4,
+      "leaks": 0,
+      "latency_ms_k5": 17.58
+    },
+    {
+      "query_id": "p10-q05",
+      "patient_id": "p10",
+      "stratum": "numeric",
+      "rank_k5": 2,
+      "rank_k10": 2,
+      "dense_rank": 2,
+      "sparse_rank": 3,
+      "returned_k5": 5,
+      "returned_k10": 6,
+      "returned_dense": 2,
+      "returned_sparse": 6,
+      "leaks": 0,
+      "latency_ms_k5": 16.07
+    },
+    {
+      "query_id": "p10-q06",
+      "patient_id": "p10",
+      "stratum": "numeric",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 2,
+      "returned_k5": 5,
+      "returned_k10": 9,
+      "returned_dense": 3,
+      "returned_sparse": 9,
+      "leaks": 0,
+      "latency_ms_k5": 17.83
+    },
+    {
+      "query_id": "p10-q07",
+      "patient_id": "p10",
+      "stratum": "medication",
+      "rank_k5": 3,
+      "rank_k10": 3,
+      "dense_rank": null,
+      "sparse_rank": 2,
+      "returned_k5": 3,
+      "returned_k10": 3,
+      "returned_dense": 1,
+      "returned_sparse": 3,
+      "leaks": 0,
+      "latency_ms_k5": 17.88
+    },
+    {
+      "query_id": "p10-q08",
+      "patient_id": "p10",
+      "stratum": "medication",
+      "rank_k5": 1,
+      "rank_k10": 1,
+      "dense_rank": 1,
+      "sparse_rank": 1,
+      "returned_k5": 5,
+      "returned_k10": 8,
+      "returned_dense": 2,
+      "returned_sparse": 7,
+      "leaks": 0,
+      "latency_ms_k5": 23.65
+    },
+    {
+      "query_id": "p10-q09",
+      "patient_id": "p10",
+      "stratum": "negative",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 0,
+      "returned_k10": 0,
+      "returned_dense": 0,
+      "returned_sparse": 0,
+      "leaks": 0,
+      "latency_ms_k5": 16.48
+    },
+    {
+      "query_id": "p10-q10",
+      "patient_id": "p10",
+      "stratum": "negative",
+      "rank_k5": null,
+      "rank_k10": null,
+      "dense_rank": null,
+      "sparse_rank": null,
+      "returned_k5": 1,
+      "returned_k10": 1,
+      "returned_dense": 0,
+      "returned_sparse": 1,
+      "leaks": 0,
+      "latency_ms_k5": 16.18
+    }
+  ],
+  "run_id": "27d95764aec5"
+}

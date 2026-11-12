@@ -1,0 +1,8 @@
+MRI LIVER WITH CONTRAST REPORT AND TUMOR BOARD NOTE
+Date: 2026-09-09. Synthetic record for evaluation only.
+
+MRI: the 1.5 cm segment 6 observation shows arterial phase hyperenhancement, nonperipheral washout on the portal venous phase, and an enhancing capsule. LI-RADS category LR-5, definite hepatocellular carcinoma. No vascular invasion. No other observations. Mild ascites.
+
+Tumor board recommendation: single HCC within Milan criteria. Options discussed were microwave ablation and transplant evaluation. Given Child-Pugh A and the small size, percutaneous microwave ablation is recommended, with referral to the transplant center in parallel because of new ascites.
+
+Medication changes after ascites was found: spironolactone 50 mg daily and furosemide 20 mg daily, with a 2 gram sodium diet. Nadolol continued at 20 mg daily; hold if systolic blood pressure falls below 90.

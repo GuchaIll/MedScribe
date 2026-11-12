@@ -1,0 +1,13 @@
+HEPATOLOGY CLINIC NOTE
+Date: 2026-02-24. Synthetic record for evaluation only.
+
+52-year-old man with compensated cirrhosis from chronic hepatitis C genotype 1a and prior alcohol use, abstinent since 2023. He completed 12 weeks of sofosbuvir-velpatasvir in 2025 and achieved sustained virologic response at 12 weeks, so the hepatitis C is cured. Cirrhosis remains and needs lifelong monitoring.
+
+Child-Pugh class A, score 6. MELD-Na 9. No history of ascites, encephalopathy, or variceal bleeding.
+
+Upper endoscopy in 2025 showed medium esophageal varices without red signs. He takes nadolol 20 mg daily for primary prophylaxis; resting heart rate today is 62.
+
+Liver stiffness by transient elastography is 18.4 kPa, down from 24.1 kPa before antiviral therapy.
+
+Plan
+Hepatocellular carcinoma surveillance with ultrasound and AFP every six months. Hepatitis A and B vaccination series completed. Continue complete alcohol abstinence. Avoid NSAIDs; acetaminophen up to 2 grams per day is acceptable. Repeat endoscopy is not needed while on a non-selective beta blocker.

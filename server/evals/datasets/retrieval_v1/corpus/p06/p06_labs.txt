@@ -1,0 +1,23 @@
+LABORATORY RESULTS
+Synthetic record for evaluation only.
+
+2026-01-18 (emergency department)
+Glucose: 486 mg/dL
+Venous pH: 7.18
+Bicarbonate: 9 mmol/L
+Anion gap: 24
+Beta-hydroxybutyrate: 6.2 mmol/L
+Potassium: 5.6 mmol/L
+Creatinine: 1.4 mg/dL (baseline 0.9, prerenal)
+
+2026-02-03 (clinic)
+Hemoglobin A1c: 10.2 %
+Tissue transglutaminase IgA: 2 U/mL (negative)
+Total IgA: normal
+TSH: 1.9 mIU/L
+LDL cholesterol: 118 mg/dL
+Urine albumin-to-creatinine ratio: 12 mg/g
+
+2026-08-04 (clinic)
+Hemoglobin A1c: 7.9 %
+LDL cholesterol: 109 mg/dL

@@ -1,0 +1,19 @@
+MEDICATION RECONCILIATION
+Reconciled 2026-08-19. Synthetic record for evaluation only.
+
+Active medications
+1. Metformin 500 mg tablet, take one tablet twice daily with meals. Dose reduced from 1000 mg twice daily in August because eGFR fell below 50.
+2. Empagliflozin 10 mg tablet, one tablet every morning. Started March 2026.
+3. Lisinopril 20 mg tablet, one tablet daily. Increased from 10 mg in March 2026.
+4. Atorvastatin 40 mg tablet, one tablet at bedtime.
+5. Aspirin 81 mg, one tablet daily.
+6. Cyanocobalamin 1000 mcg, one tablet daily, started for low-normal B12.
+
+Discontinued
+Glipizide 5 mg twice daily, stopped March 2026 after two episodes of hypoglycemia below 60 mg/dL while driving.
+
+Allergies and intolerances
+Sulfonamide antibiotics: rash.
+
+Counseling
+Patient was told to hold empagliflozin and metformin on days he cannot eat or drink because of vomiting or diarrhea, and to call the clinic. He was told to watch for genital yeast infection symptoms on empagliflozin.

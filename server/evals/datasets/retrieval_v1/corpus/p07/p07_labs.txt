@@ -1,0 +1,17 @@
+LABORATORY RESULTS
+Synthetic record for evaluation only.
+
+2026-04-10
+25-hydroxy vitamin D: 18 ng/mL (deficient)
+Calcium: 9.1 mg/dL
+Albumin: 3.9 g/dL
+Creatinine: 0.96 mg/dL, estimated creatinine clearance 41 mL/min
+Parathyroid hormone: 78 pg/mL (mildly high, secondary to low vitamin D)
+TSH: 3.1 mIU/L
+Vitamin B12: 410 pg/mL
+Sodium: 134 mmol/L
+
+2026-07-15
+25-hydroxy vitamin D: 34 ng/mL
+Calcium: 9.4 mg/dL
+Sodium: 139 mmol/L (improved after stopping hydrochlorothiazide)
