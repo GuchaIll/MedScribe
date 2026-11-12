@@ -1,0 +1,13 @@
+ABDOMINAL ULTRASOUND REPORT
+Date: 2026-08-26. Synthetic record for evaluation only.
+
+Indication: hepatocellular carcinoma surveillance in cirrhosis.
+
+Liver: nodular contour and coarse echotexture consistent with cirrhosis. A new 1.4 cm hypoechoic lesion in segment 6. No other focal lesions. Portal vein patent with hepatopetal flow.
+Spleen: enlarged at 14.2 cm.
+Small volume perihepatic ascites, not present on the February study.
+Gallbladder: no stones. Common bile duct 4 mm.
+
+LI-RADS ultrasound category US-3, positive. Visualization score B.
+
+Recommendation: multiphase contrast-enhanced MRI of the liver to characterize the segment 6 lesion.

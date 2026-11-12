@@ -1,0 +1,22 @@
+LABORATORY RESULTS
+Synthetic record for evaluation only.
+
+2026-02-24
+AFP: 4.2 ng/mL
+Platelets: 98 x10^9/L
+Albumin: 3.6 g/dL
+Total bilirubin: 1.3 mg/dL
+INR: 1.2
+Sodium: 137 mmol/L
+Creatinine: 0.88 mg/dL
+ALT: 29 U/L
+Hepatitis C RNA: not detected
+
+2026-08-26
+AFP: 11.8 ng/mL (rising)
+Platelets: 91 x10^9/L
+Albumin: 3.3 g/dL
+Total bilirubin: 1.5 mg/dL
+INR: 1.3
+Sodium: 134 mmol/L
+Creatinine: 0.94 mg/dL

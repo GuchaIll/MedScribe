@@ -1,0 +1,12 @@
+INPATIENT DISCHARGE SUMMARY: DIABETIC KETOACIDOSIS
+Admitted 2026-01-18, discharged 2026-01-21. Synthetic record for evaluation only.
+
+29-year-old man with type 1 diabetes since age 12 presented with nausea, vomiting, and abdominal pain after two days of gastroenteritis. He stopped his basal insulin because he was not eating.
+
+Admission labs: glucose 486 mg/dL, venous pH 7.18, bicarbonate 9 mmol/L, anion gap 24, beta-hydroxybutyrate 6.2 mmol/L, potassium 5.6 mmol/L. Lipase normal.
+
+Course: treated in the ICU with intravenous fluids and an insulin infusion at 0.1 units/kg/hour. Potassium was added to fluids once it fell below 5.0. The anion gap closed after 14 hours. He was transitioned to subcutaneous insulin with a two-hour overlap before the infusion was stopped.
+
+Key education: never stop basal insulin during illness, even when not eating. Check ketones when glucose is above 250 or when vomiting. Sick-day rules sheet provided.
+
+Discharge plan: resume insulin glargine and insulin lispro, endocrinology follow-up within two weeks, continuous glucose monitor to be started.

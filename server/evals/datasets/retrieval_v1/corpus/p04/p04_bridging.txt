@@ -1,0 +1,16 @@
+PERIPROCEDURAL ANTICOAGULATION PLAN
+Procedure: screening colonoscopy with possible polypectomy, scheduled 2026-04-14. Synthetic record for evaluation only.
+
+Because of the mechanical aortic valve with an additional thromboembolic risk factor, warfarin interruption requires bridging with low molecular weight heparin.
+
+Schedule
+Day minus 5 (April 9): take the last warfarin dose.
+Day minus 3 (April 11): start enoxaparin 1 mg/kg, which is 90 mg, subcutaneously every 12 hours.
+Day minus 1 (April 13): give only the morning enoxaparin dose, 24 hours before the procedure.
+Day 0: procedure. Restart warfarin at the usual dose the evening of the procedure if the gastroenterologist confirms hemostasis.
+Day plus 1: resume enoxaparin 90 mg every 12 hours if no high-risk polypectomy; if a large polyp was removed, wait until day plus 2.
+Continue enoxaparin until the INR is 2.5 or higher on two checks.
+
+Creatinine clearance is 78 mL/min, so no enoxaparin dose reduction is needed.
+
+Outcome addendum: two small polyps removed with cold snare, no bleeding. Enoxaparin stopped on April 20 when INR reached 2.7.

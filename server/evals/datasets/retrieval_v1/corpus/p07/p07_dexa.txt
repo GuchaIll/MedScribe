@@ -1,0 +1,13 @@
+BONE DENSITY (DEXA) REPORT
+Date: 2026-04-08. Synthetic record for evaluation only.
+
+Lumbar spine L1 to L4: bone mineral density 0.742 g/cm2, T-score -2.8.
+Left femoral neck: T-score -2.4.
+Total left hip: T-score -2.1.
+L3 was excluded due to degenerative change.
+
+FRAX 10-year probability: major osteoporotic fracture 24 percent, hip fracture 6.1 percent.
+
+Impression: osteoporosis by lumbar spine T-score. High fracture risk.
+
+Recommendation: start pharmacologic therapy. Check vitamin D and calcium before starting a bisphosphonate. Repeat DEXA in two years on the same machine.

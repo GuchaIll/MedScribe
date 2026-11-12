@@ -1,0 +1,13 @@
+NEPHROLOGY CONSULTATION
+Date: 2026-09-02. Synthetic record for evaluation only.
+
+Reason for consult: progressive chronic kidney disease with albuminuria in a patient with diabetes and hypertension.
+
+Findings
+The eGFR trend is 52, then 49, then 48 over six months, consistent with slow decline. Albuminuria improved from 112 to 86 mg/g after starting the SGLT2 inhibitor and raising the ACE inhibitor. Renal ultrasound shows two normal-sized kidneys at 10.8 and 11.2 cm with mildly increased echogenicity and no hydronephrosis. Potassium is 5.1, which limits further renin-angiotensin blockade.
+
+Impression
+Diabetic kidney disease, CKD stage 3a, albuminuria category A2. No evidence of an obstructive or glomerulonephritic cause.
+
+Recommendations
+Continue empagliflozin regardless of glucose effect because it slows kidney decline. Do not add spironolactone while potassium is above 5.0. Consider finerenone later if potassium settles below 4.8 on a low-potassium diet. Avoid NSAIDs such as ibuprofen and naproxen. Dose-adjust renally cleared drugs. Repeat urine albumin and metabolic panel in three months. Nephrology follow-up in six months, sooner if eGFR falls below 40.

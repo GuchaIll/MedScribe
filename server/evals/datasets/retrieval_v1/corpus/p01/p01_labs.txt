@@ -1,0 +1,27 @@
+LABORATORY RESULTS SUMMARY
+Synthetic record for evaluation only.
+
+Collected 2026-03-14
+Hemoglobin A1c: 8.4 % (reference below 5.7)
+Fasting glucose: 188 mg/dL
+Creatinine: 1.48 mg/dL
+eGFR: 52 mL/min/1.73m2
+Potassium: 4.6 mmol/L
+Urine albumin-to-creatinine ratio: 112 mg/g
+LDL cholesterol: 94 mg/dL
+
+Collected 2026-03-28 (two weeks after lisinopril increase)
+Creatinine: 1.55 mg/dL
+eGFR: 49 mL/min/1.73m2
+Potassium: 4.9 mmol/L
+Comment: creatinine rise under 30 percent, acceptable after ACE inhibitor titration.
+
+Collected 2026-08-19
+Hemoglobin A1c: 7.6 %
+Fasting glucose: 142 mg/dL
+Creatinine: 1.58 mg/dL
+eGFR: 48 mL/min/1.73m2
+Potassium: 5.1 mmol/L (high-normal)
+Urine albumin-to-creatinine ratio: 86 mg/g
+LDL cholesterol: 71 mg/dL
+Vitamin B12: 245 pg/mL (low-normal, on long-term metformin)

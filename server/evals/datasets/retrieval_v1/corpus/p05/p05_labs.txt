@@ -1,0 +1,25 @@
+MONITORING LABS
+Synthetic record for evaluation only.
+
+2026-03-03
+CRP: 18 mg/L
+ESR: 42 mm/hr
+ALT: 31 U/L
+AST: 28 U/L
+Creatinine: 0.72 mg/dL
+White blood cells: 6.8 x10^9/L
+Platelets: 312 x10^9/L
+QuantiFERON-TB Gold: negative
+Hepatitis B surface antigen: negative; hepatitis B core antibody: negative
+
+2026-06-02
+CRP: 4 mg/L
+ESR: 18 mm/hr
+ALT: 62 U/L (elevated, more than 1.5 times the upper limit)
+AST: 49 U/L
+White blood cells: 5.1 x10^9/L
+Comment: transaminase elevation on methotrexate, see plan in rheumatology note.
+
+2026-07-14
+ALT: 34 U/L
+AST: 27 U/L

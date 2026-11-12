@@ -1,0 +1,10 @@
+TRANSTHORACIC ECHOCARDIOGRAM REPORT
+Date: 2026-05-05. Synthetic record for evaluation only.
+
+Indication: decompensated heart failure.
+
+Findings
+Left ventricle is moderately dilated with global hypokinesis. Left ventricular ejection fraction is 35 percent by biplane Simpson method, previously 40 percent in 2025. Grade II diastolic dysfunction. Left atrium is severely enlarged at 52 mL/m2. Right ventricle is normal in size with mildly reduced function, TAPSE 15 mm. Moderate functional mitral regurgitation. Mild tricuspid regurgitation with estimated pulmonary artery systolic pressure of 48 mmHg. Small pericardial effusion without tamponade physiology. The rhythm during the study was atrial fibrillation.
+
+Conclusion
+Heart failure with reduced ejection fraction, worse than the prior study. Moderate secondary mitral regurgitation. Mild pulmonary hypertension.

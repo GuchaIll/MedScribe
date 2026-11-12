@@ -1,0 +1,12 @@
+LOW-DOSE CT CHEST FOR LUNG CANCER SCREENING
+Date: 2026-02-12. Synthetic record for evaluation only.
+
+Comparison: prior screening CT from 2025.
+
+Findings
+New 6 mm solid nodule in the right upper lobe, anterior segment. A stable 3 mm calcified granuloma in the left lower lobe. Centrilobular and paraseptal emphysema, upper lobe predominant. Moderate coronary artery calcification. No lymphadenopathy. No pleural effusion.
+
+Impression
+Lung-RADS category 3, probably benign. Recommend repeat low-dose CT in 6 months. Coronary artery calcification was reported to the primary care physician for cardiovascular risk management.
+
+Follow-up addendum 2026-08-20: the right upper lobe nodule is unchanged at 6 mm. Downgraded to Lung-RADS 2. Return to annual screening in 12 months.

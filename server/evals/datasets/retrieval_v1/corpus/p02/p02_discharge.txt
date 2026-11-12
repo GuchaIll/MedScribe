@@ -1,0 +1,13 @@
+HOSPITAL DISCHARGE SUMMARY
+Admitted 2026-05-03, discharged 2026-05-09. Synthetic record for evaluation only.
+
+Principal diagnosis: acute on chronic heart failure with reduced ejection fraction.
+Secondary diagnoses: persistent atrial fibrillation, chronic kidney disease stage 3b, hyponatremia.
+
+Hospital course
+71-year-old woman presented with three days of worsening shortness of breath, orthopnea requiring three pillows, and 4 kg weight gain. She had run out of furosemide a week earlier. Chest radiograph showed bilateral pleural effusions and interstitial edema. BNP was 980 pg/mL on arrival. She was diuresed with intravenous furosemide 40 mg twice daily with net negative 5.2 liters over the stay. Atrial fibrillation with rapid ventricular response to 128 resolved with uptitration of metoprolol. Sodium nadir was 129 and improved to 133 with fluid restriction. Discharge weight 68.4 kg, which is her new dry weight.
+
+Discharge condition: stable, ambulating in hallway without oxygen.
+
+Follow-up
+Heart failure clinic within seven days. Daily weights; call if weight rises more than 1 kg in a day or 2 kg in a week. Fluid restriction 1.5 liters per day. Sodium under 2 grams per day. Repeat basic metabolic panel within one week.

@@ -1,0 +1,14 @@
+PULMONARY FUNCTION TEST REPORT
+Date: 2026-06-10. Synthetic record for evaluation only.
+
+Spirometry before and after bronchodilator
+FVC: 3.21 L, 89 percent predicted
+FEV1: 2.05 L, 68 percent predicted
+FEV1/FVC ratio: 0.64
+Post-bronchodilator FEV1: 2.38 L, an increase of 330 mL and 16 percent
+
+Fractional exhaled nitric oxide: 48 ppb (high)
+Blood eosinophil count: 410 cells per microliter
+
+Interpretation
+Moderate obstructive ventilatory defect with a significant bronchodilator response, consistent with asthma. Elevated exhaled nitric oxide and eosinophils suggest type 2 airway inflammation. If control remains poor on high-dose inhaled steroid, she may qualify for biologic therapy targeting IL-5 or IL-4 receptor.

@@ -1,0 +1,22 @@
+INPATIENT LABORATORY FLOWSHEET
+Synthetic record for evaluation only.
+
+2026-05-03 (admission)
+BNP: 980 pg/mL
+Sodium: 131 mmol/L
+Potassium: 3.8 mmol/L
+Creatinine: 1.42 mg/dL
+High-sensitivity troponin T: 32 ng/L, repeat 34 ng/L, flat, not consistent with acute myocardial infarction
+TSH: 2.1 mIU/L
+
+2026-05-06
+Sodium: 129 mmol/L
+Creatinine: 1.51 mg/dL
+Magnesium: 1.7 mg/dL, replaced with intravenous magnesium sulfate
+
+2026-05-09 (discharge)
+BNP: 310 pg/mL
+Sodium: 133 mmol/L
+Potassium: 4.2 mmol/L
+Creatinine: 1.30 mg/dL
+Ferritin: 62 ng/mL and transferrin saturation 14 percent, consistent with iron deficiency; intravenous ferric carboxymaltose 750 mg given before discharge

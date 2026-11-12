@@ -1,0 +1,11 @@
+ENDOCRINE FOLLOW-UP NOTE
+Date: 2026-06-30. Synthetic record for evaluation only.
+
+Primary hypothyroidism from Hashimoto thyroiditis, on levothyroxine. In March he reported cold intolerance, constipation, and weight gain of 3 kg. TSH was 6.8 mIU/L with free T4 0.8 ng/dL, so levothyroxine was increased from 88 mcg to 100 mcg daily.
+
+Today TSH is 2.4 mIU/L and free T4 1.2 ng/dL. Symptoms have resolved.
+
+Interaction note: a change in thyroid status changes warfarin sensitivity. As the hypothyroidism was corrected, the INR rose to 3.8 in May and the anticoagulation clinic reduced warfarin back to 35 mg per week. The anticoagulation clinic should be told of any future levothyroxine dose change.
+
+Plan
+Continue levothyroxine 100 mcg daily, taken on an empty stomach 30 to 60 minutes before breakfast, separated by four hours from calcium or iron. Recheck TSH in six months.
