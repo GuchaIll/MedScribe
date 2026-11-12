@@ -89,8 +89,17 @@ New models live in `server/evals/retrieval/dataset.py`. No existing model covers
 `GoldSpan`: `doc_id` (resolution + ambiguity check), `quote` (hit test).
 
 `CorpusDocument`: `doc_id` (gold reference, becomes `DocumentArtifact.document_id`),
-`patient_id` (seeding scope), `source_type` (`DocumentArtifact.source_type`), `text`
-(`DocumentArtifact.extracted_text`). `title` was considered and dropped: nothing reads it.
+`patient_id` (seeding scope, leakage map), `text` (`DocumentArtifact.extracted_text`).
+Dropped during implementation: `title` (nothing reads it) and `source_type` (`chunk_documents`
+copies it into chunk metadata, which is never stored). The corpus is plain files,
+`corpus/<patient_id>/<doc_id>.txt`, so ids come from the path and documents are reviewable as text.
+
+`ResolvedEvalSet` (in-flight only, never persisted): `version` (report), `documents` (report
+counts), `queries` (query loop), `chunks` (the exact rows the seeder writes), `chunk_patient`
+(leakage check, random baseline pool sizes), `gold_chunk_ids` (hit test).
+
+`QueryOutcome` (per query, written to `results.json`): every field is either a rank that feeds a
+metric, a returned-count that feeds the leg diagnostics, `leaks`, or `latency_ms_k5`.
 
 `ChunkEmbedding` rows written by the seeder use existing columns only; no migration.
 
@@ -102,10 +111,12 @@ New models live in `server/evals/retrieval/dataset.py`. No existing model covers
 3. `server/evals/retrieval/dataset.py`: pydantic models, JSON/JSONL loaders, validation, gold resolution.
 4. `server/evals/retrieval/metrics.py`: pure scoring + bootstrap.
 5. `server/evals/retrieval/runner.py` + `__main__.py`: preflight, seed, query, score, write evidence pack.
-6. `server/evals/datasets/retrieval_v1/`: `corpus.json`, `queries.jsonl`, `CARD.md`.
+6. `server/evals/datasets/retrieval_v1/`: `corpus/<patient_id>/<doc_id>.txt`, `queries.jsonl`, `CARD.md`.
 7. `server/evals/deterministic/test_retrieval_eval.py`: metrics, loader failure paths,
-   dataset integrity (100 rows, strata, every gold resolves) with no DB and no model.
-8. `server/tests/integration/test_retrieval_eval_runner.py`, marked `db`, skipped without `RETRIEVAL_EVAL_DATABASE_URL`.
+   dataset integrity (100 rows, strata, every gold resolves), runner guards and the
+   degraded-retriever abort with a fake retriever. No DB and no model.
+8. `server/evals/integration/test_retrieval_runner_db.py`, marked `db`/`slow`, skipped without
+   `RETRIEVAL_EVAL_DATABASE_URL`. Kept under `evals/` (not `tests/`) so it does not load `tests/conftest.py`.
 9. Run against a throwaway `pgvector/pgvector:pg15` container; commit `docs/benchmarks/retrieval-accuracy/`.
 10. Update the audit row in `docs/benchmarks/README.md`.
 
@@ -138,19 +149,36 @@ New models live in `server/evals/retrieval/dataset.py`. No existing model covers
 
 Commands:
 - `cd server && .venv/bin/python -m pytest evals/deterministic -p no:cacheprovider -o addopts=""` passes in under 10 s
-- `cd server && RETRIEVAL_EVAL_DATABASE_URL=... .venv/bin/python -m pytest tests/integration/test_retrieval_eval_runner.py -o addopts=""` passes
+- `cd server && RETRIEVAL_EVAL_DATABASE_URL=... .venv/bin/python -m pytest evals/integration -o addopts=""` passes
 - `cd server && DATABASE_URL=... .venv/bin/python -m evals.retrieval --artifacts-dir ../docs/benchmarks/retrieval-accuracy` completes
 
 Acceptance (from the issue):
-- [ ] Synthetic corpus, 8-12 fake patients, dataset card states generation method
-- [ ] 100 labeled queries, stratified, `server/evals/datasets/retrieval_v1`
-- [ ] Gold anchored to source text; survives a chunker change
-- [ ] Loader seeds through the existing ingestion/embedding path and resolves gold
-- [ ] Recall@1/5/10, MRR, bootstrap 95% CIs, per-stratum
-- [ ] Leakage = 0
-- [ ] Runner CLI with `--artifacts-dir`
-- [ ] Evidence pack in `docs/benchmarks/retrieval-accuracy/`
-- [ ] Audit row in `docs/benchmarks/README.md` updated
+- [x] Synthetic corpus, 8-12 fake patients, dataset card states generation method
+- [x] 100 labeled queries, stratified, `server/evals/datasets/retrieval_v1`
+- [x] Gold anchored to source text; survives a chunker change
+- [x] Loader seeds through the existing ingestion/embedding path and resolves gold
+- [x] Recall@1/5/10, MRR, bootstrap 95% CIs, per-stratum
+- [x] Leakage = 0
+- [x] Runner CLI with `--artifacts-dir`
+- [x] Evidence pack in `docs/benchmarks/retrieval-accuracy/`
+- [x] Audit row in `docs/benchmarks/README.md` updated
+
+## Findings during implementation
+
+Recorded here and in the PR; none are fixed in this ticket because the ticket measures as-is.
+
+1. ORM / migration enum mismatch: `app.database.models` binds `SQLEnum(UserRole)` and
+   `SQLEnum(SessionStatus)` by enum name (`'DOCTOR'`), while `000_initial` creates the Postgres
+   enums with lowercase values (`'doctor'`). Any ORM insert of `User` or `Session` into a migrated
+   Postgres fails. The seeder writes those three tables with SQL; chunk rows still go through
+   `EmbeddingService`.
+2. The dense leg's `DENSE_THRESHOLD = 0.30` empties it on 20 of 88 positive queries; median
+   lists are 2 (dense) and 3 (hybrid) chunks long, so Recall@10 equals Recall@5.
+3. When one leg's SQL fails, `HybridRetrievalService` logs and returns `[]` but never rolls back,
+   so every later statement on that DB session fails with `InFailedSqlTransaction`. Found by the
+   integration test that forces a tsquery syntax error.
+4. The ivfflat index is not used for the per-patient query (the planner filters by session and
+   sorts), so `ivfflat.probes = 1` does not affect these results.
 
 ## Risks and open questions
 
